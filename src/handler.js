@@ -1,14 +1,17 @@
+import { transcribe } from './ai.js';
 import { analyzeMessage, resolveConflict } from './brain.js';
 import { config } from './config.js';
 import * as kb from './knowledge.js';
-import { deliver, getProfile, showLoading } from './line.js';
+import { deliver, getMessageContent, getProfile, showLoading } from './line.js';
 
 const RESET_KEYWORDS = ['เริ่มใหม่', 'ล้างประวัติ', 'reset', 'clear'];
 const MY_ID_KEYWORDS = ['ไอดีของฉัน', 'ไอดี', 'myid'];
 const BOOK_KEYWORDS = ['หนังสือ', 'ขอหนังสือ', 'book'];
 const CANCEL_KEYWORDS = ['ยกเลิก', 'cancel'];
 
-const ERROR_REPLY = 'ขออภัยครับ ระบบขัดข้องชั่วคราว รบกวนลองพิมพ์ใหม่อีกครั้ง';
+const UNSUPPORTED_REPLY = 'ตอนนี้ผมรับได้เฉพาะข้อความตัวอักษรกับข้อความเสียงครับ';
+const VOICE_UNCLEAR_REPLY = 'ขออภัยครับ ฟังเสียงไม่ออก รบกวนพูดใหม่ชัด ๆ อีกครั้ง หรือพิมพ์มาแทนได้เลย';
+const ERROR_REPLY ='ขออภัยครับ ระบบขัดข้องชั่วคราว รบกวนลองพิมพ์ใหม่อีกครั้ง';
 const NOT_TEACHER_REPLY =
   'ขอบคุณที่เล่าให้ฟังครับ แต่บัญชีนี้ยังไม่มีสิทธิ์บันทึกความรู้เข้าหนังสือ ' +
   'ถ้าต้องการสอน ให้พิมพ์ "ไอดีของฉัน" แล้วส่งรหัสที่ได้ให้ผู้ดูแลเพิ่มสิทธิ์ให้';
@@ -82,25 +85,35 @@ export async function handleEvent(event) {
     return;
   }
 
-  // รองรับเฉพาะข้อความตัวอักษร ประเภทอื่น (รูป สติกเกอร์ ไฟล์) ข้ามไปก่อน
-  if (event.type !== 'message' || event.message?.type !== 'text') return;
+  if (event.type !== 'message') return;
 
   const userId = event.source?.userId;
   const replyToken = event.replyToken;
-  // เก็บต้นฉบับตามที่ผู้ใช้พิมพ์มาทุกตัวอักษร ห้ามแก้ ส่วน text ใช้ตัดสินใจเท่านั้น
-  const original = event.message.text;
-  const text = original.trim();
-  if (!userId || !text) return;
+  if (!userId) return;
 
-  const command = text.toLowerCase();
-  if (MY_ID_KEYWORDS.includes(command)) {
-    const role = config.teachers.has(userId) ? 'มีสิทธิ์สอนแล้ว' : 'ยังไม่มีสิทธิ์สอน';
-    await deliver({ replyToken, userId, text: `ไอดีของคุณคือ\n${userId}\n\n(${role})` });
+  const type = event.message?.type;
+  // สติกเกอร์มักเป็นแค่การทักหรือขอบคุณ เงียบไว้ดีกว่าตอบว่ารับไม่ได้
+  if (type === 'sticker') return;
+  if (type !== 'text' && type !== 'audio') {
+    // ในกลุ่มคนส่งรูปกันเป็นปกติ ถ้าตอบทุกรูปจะรก จึงบอกเฉพาะแชทเดี่ยว
+    if (event.source?.type === 'user') {
+      await deliver({ replyToken, userId, text: UNSUPPORTED_REPLY });
+    }
     return;
   }
-  if (BOOK_KEYWORDS.includes(command)) {
-    await deliver({ replyToken, userId, text: `อ่านหนังสือความรู้ของทีมได้ที่\n${bookLink()}` });
-    return;
+
+  if (type === 'text') {
+    const command = event.message.text.trim().toLowerCase();
+    if (!command) return;
+    if (MY_ID_KEYWORDS.includes(command)) {
+      const role = config.teachers.has(userId) ? 'มีสิทธิ์สอนแล้ว' : 'ยังไม่มีสิทธิ์สอน';
+      await deliver({ replyToken, userId, text: `ไอดีของคุณคือ\n${userId}\n\n(${role})` });
+      return;
+    }
+    if (BOOK_KEYWORDS.includes(command)) {
+      await deliver({ replyToken, userId, text: `อ่านหนังสือความรู้ของทีมได้ที่\n${bookLink()}` });
+      return;
+    }
   }
 
   // แชทกลุ่มไม่รองรับ loading animation จึงเรียกเฉพาะแชทเดี่ยว
@@ -109,7 +122,7 @@ export async function handleEvent(event) {
   }
 
   try {
-    await inOrder(userId, () => respond({ userId, replyToken, text, original, command }));
+    await inOrder(userId, () => respond({ userId, replyToken, message: event.message }));
   } catch (err) {
     console.error('[handler] ตอบข้อความไม่สำเร็จ:', err);
     // อย่าให้ error ทำให้ผู้ใช้เงียบหาย ต้องตอบอะไรกลับไปเสมอ
@@ -119,22 +132,57 @@ export async function handleEvent(event) {
   }
 }
 
-async function respond({ userId, replyToken, text, original, command }) {
+/**
+ * ข้อความเสียง: ดาวน์โหลดไฟล์ แล้วถอดเป็นตัวอักษร
+ * ส่งชื่อบทและชื่อกฎที่มีอยู่ไปเป็นคำใบ้ ให้ถอดศัพท์เฉพาะของทีมได้ถูกขึ้น
+ */
+async function listen(message) {
+  const audio = await getMessageContent(message.id);
+  const rules = await kb.listActiveRules();
+  const hint = [...new Set(rules.flatMap((r) => [r.topic, r.title]))].join(', ').slice(0, 800);
+  const transcript = await transcribe(audio.buffer, hint);
+  return { transcript, audio: { ...audio, durationMs: message.duration } };
+}
+
+async function respond({ userId, replyToken, message }) {
   const user = await kb.getUser(userId);
   if (!user?.display_name) {
     const profile = await getProfile(userId);
     await kb.saveUser(userId, profile?.displayName ?? null);
   }
 
+  // ดึงแชทก่อนหน้า "ก่อน" บันทึกข้อความนี้ ไม่งั้นข้อความนี้จะซ้ำสองรอบใน context
+  const history = await kb.recentMessages(userId);
+
+  // เก็บต้นฉบับตามที่ผู้ใช้ส่งมาทุกตัวอักษร ห้ามแก้ ส่วน text ใช้ตัดสินใจเท่านั้น
+  let messageId;
+  let text;
+  let heard = '';
+  if (message.type === 'audio') {
+    const { transcript, audio } = await listen(message);
+    // เก็บไฟล์เสียงไว้เสมอ แม้ถอดไม่ออก เพราะนี่คือต้นฉบับ
+    messageId = await kb.saveVoiceMessage(userId, transcript, audio);
+    if (!transcript) {
+      await kb.saveMessage(userId, 'assistant', VOICE_UNCLEAR_REPLY);
+      await deliver({ replyToken, userId, text: VOICE_UNCLEAR_REPLY });
+      return;
+    }
+    text = transcript;
+    heard = `🎤 ผมได้ยินว่า: "${transcript}"\n\n`;
+  } else {
+    text = message.text.trim();
+    messageId = await kb.saveMessage(userId, 'user', message.text);
+  }
+
+  const command = text.toLowerCase();
   if (RESET_KEYWORDS.includes(command)) {
     await kb.resetContext(userId);
     await deliver({ replyToken, userId, text: 'เริ่มคุยเรื่องใหม่ได้เลยครับ (ความรู้ที่บันทึกไว้ยังอยู่ครบ)' });
     return;
   }
 
-  // ดึงแชทก่อนหน้า "ก่อน" บันทึกข้อความนี้ ไม่งั้นข้อความนี้จะซ้ำสองรอบใน context
-  const history = await kb.recentMessages(userId);
-  const messageId = await kb.saveMessage(userId, 'user', original);
+  // บอก AI ว่าข้อความนี้ถอดจากเสียง จะได้ไม่ยึดคำที่ฟังเพี้ยนเป็นข้อเท็จจริง
+  if (heard) text = `[ข้อความนี้ถอดจากเสียงพูด อาจมีคำที่ฟังผิด ถ้าตัวเลขหรือชื่อดูแปลกให้ถามยืนยัน]\n${text}`;
   const isTeacher = config.teachers.has(userId);
 
   let reply = null;
@@ -149,6 +197,7 @@ async function respond({ userId, replyToken, text, original, command }) {
     }
   }
 
+  reply = heard + reply;
   await kb.saveMessage(userId, 'assistant', reply);
   await deliver({ replyToken, userId, text: reply });
 }

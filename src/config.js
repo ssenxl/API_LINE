@@ -38,6 +38,8 @@ export const config = {
     reasoningEffort: process.env.OPENAI_REASONING_EFFORT || '',
     // โมเดลตระกูล GPT-5 นับ token ที่ใช้ "คิด" รวมในเพดานนี้ด้วย จึงต้องเผื่อไว้เยอะ
     maxOutputTokens: Number(process.env.OPENAI_MAX_OUTPUT_TOKENS) || 8000,
+    // โมเดลถอดเสียงเป็นข้อความ รองรับภาษาไทย
+    transcribeModel: process.env.OPENAI_TRANSCRIBE_MODEL || 'gpt-4o-transcribe',
     timeoutMs: 120_000,
   },
 

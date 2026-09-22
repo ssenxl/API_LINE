@@ -96,6 +96,22 @@ export async function deliver({ replyToken, userId, text }) {
 }
 
 /**
+ * ดาวน์โหลดไฟล์ที่ผู้ใช้ส่งมา (เสียง รูป ฯลฯ) LINE เก็บไฟล์ไว้ให้ช่วงสั้น ๆ เท่านั้น ต้องดึงทันที
+ * ไฟล์อยู่คนละโดเมนกับ API อื่น (api-data แทน api)
+ */
+export async function getMessageContent(messageId) {
+  const res = await fetch(
+    `https://api-data.line.me/v2/bot/message/${encodeURIComponent(messageId)}/content`,
+    { headers: { Authorization: `Bearer ${config.line.accessToken}` } },
+  );
+  if (!res.ok) throw new Error(`ดึงไฟล์จาก LINE ไม่สำเร็จ: ${res.status}`);
+  return {
+    buffer: Buffer.from(await res.arrayBuffer()),
+    mime: res.headers.get('content-type') || 'audio/m4a',
+  };
+}
+
+/**
  * ดึงชื่อที่แสดงใน LINE ไว้บอกในหนังสือว่าใครเป็นคนสอน
  * ได้เฉพาะคนที่แอด OA เป็นเพื่อนแล้ว ถ้าไม่ได้ให้คืน null แทนการ throw
  */

@@ -58,6 +58,18 @@ export async function migrate() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
     CREATE INDEX IF NOT EXISTS messages_user_time ON messages (user_id, created_at DESC);
+    -- text = พิมพ์มา, voice = ถอดจากเสียง (ไฟล์เสียงต้นฉบับอยู่ในตาราง audio)
+    ALTER TABLE messages ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'text';
+
+    -- ไฟล์เสียงต้นฉบับ แยกตารางไว้ ไม่ให้การอ่านข้อความทั่วไปต้องลากไฟล์ใหญ่มาด้วย
+    CREATE TABLE IF NOT EXISTS audio (
+      message_id  BIGINT PRIMARY KEY REFERENCES messages (id),
+      mime        TEXT   NOT NULL,
+      duration_ms INT,
+      size_bytes  INT    NOT NULL,
+      data        BYTEA  NOT NULL,
+      created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
 
     -- กฎที่ AI สรุปเป็นภาษาคนแล้ว
     CREATE TABLE IF NOT EXISTS rules (

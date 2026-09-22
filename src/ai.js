@@ -1,4 +1,4 @@
-import OpenAI from 'openai';
+import OpenAI, { toFile } from 'openai';
 import { config } from './config.js';
 
 /**
@@ -43,4 +43,22 @@ export async function askJSON(system, messages) {
   } catch {
     throw new Error(`AI ตอบกลับมาไม่ใช่ JSON: ${text.slice(0, 200)}`);
   }
+}
+
+/**
+ * ถอดเสียงพูดเป็นข้อความ
+ *
+ * @param {Buffer} buffer ไฟล์เสียง (LINE ส่งมาเป็น m4a)
+ * @param {string} hint คำศัพท์ที่น่าจะได้ยิน ช่วยให้ถอดชื่อเฉพาะได้ถูกขึ้น
+ * @returns {Promise<string>} ข้อความที่ถอดได้ อาจเป็นค่าว่างถ้าฟังไม่ออก
+ */
+export async function transcribe(buffer, hint = '') {
+  const result = await client.audio.transcriptions.create({
+    model: config.ai.transcribeModel,
+    // ชื่อไฟล์ต้องลงท้าย .m4a ไม่งั้น OpenAI ไม่รู้ว่าเป็นไฟล์ชนิดไหน
+    file: await toFile(buffer, 'voice.m4a', { type: 'audio/m4a' }),
+    language: 'th',
+    ...(hint && { prompt: hint }),
+  });
+  return (result.text ?? '').trim();
 }

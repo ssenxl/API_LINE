@@ -34,12 +34,34 @@ export async function resetContext(userId) {
   );
 }
 
-export async function saveMessage(userId, role, text) {
+export async function saveMessage(userId, role, text, source = 'text') {
   const { rows } = await query(
-    'INSERT INTO messages (user_id, role, text) VALUES ($1, $2, $3) RETURNING id',
-    [userId, role, text],
+    'INSERT INTO messages (user_id, role, text, source) VALUES ($1, $2, $3, $4) RETURNING id',
+    [userId, role, text, source],
   );
   return rows[0].id;
+}
+
+/** ข้อความเสียง: เก็บทั้งข้อความที่ถอดได้และไฟล์เสียงต้นฉบับพร้อมกัน */
+export async function saveVoiceMessage(userId, transcript, { buffer, mime, durationMs }) {
+  return withTransaction(async (db) => {
+    const { rows } = await db.query(
+      `INSERT INTO messages (user_id, role, text, source) VALUES ($1, 'user', $2, 'voice')
+       RETURNING id`,
+      [userId, transcript],
+    );
+    await db.query(
+      `INSERT INTO audio (message_id, mime, duration_ms, size_bytes, data)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [rows[0].id, mime, durationMs ?? null, buffer.length, buffer],
+    );
+    return rows[0].id;
+  });
+}
+
+export async function getAudio(messageId) {
+  const { rows } = await query('SELECT mime, data FROM audio WHERE message_id = $1', [messageId]);
+  return rows[0] ?? null;
 }
 
 export async function getMessage(id) {
@@ -218,7 +240,7 @@ export async function loadBook() {
        ORDER BY r.id`,
     ),
     query(
-      `SELECT s.rule_id, m.id AS message_id, m.text, m.created_at,
+      `SELECT s.rule_id, m.id AS message_id, m.text, m.source, m.created_at,
               COALESCE(u.display_name, '${UNKNOWN_NAME}') AS author
        FROM rule_sources s
        JOIN messages m ON m.id = s.message_id
@@ -231,7 +253,8 @@ export async function loadBook() {
        ORDER BY c.id`,
     ),
     query(
-      `SELECT c.*, m.text AS original_text, a.text AS answer_text,
+      `SELECT c.*, m.text AS original_text, m.source AS original_source,
+              a.text AS answer_text, a.source AS answer_source,
               COALESCE(u.display_name, '${UNKNOWN_NAME}') AS author
        FROM conflicts c
        JOIN messages m ON m.id = c.message_id

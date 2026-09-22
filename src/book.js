@@ -147,9 +147,33 @@ function prose(text) {
   return html.join('');
 }
 
+/**
+ * ลิงก์ไฟล์เสียงมีลายเซ็นกำกับ คนที่เปิดหนังสือได้ถึงจะฟังได้
+ * ใครเดาเลขข้อความแล้วลองเปิด /audio/123 เองจะเปิดไม่ได้
+ */
+export function audioSignature(messageId) {
+  return crypto
+    .createHmac('sha256', config.line.channelSecret)
+    .update(`audio:${messageId}`)
+    .digest('base64url')
+    .slice(0, 22);
+}
+
+function voicePlayer(messageId) {
+  const src = `/audio/${messageId}?sig=${audioSignature(messageId)}`;
+  return `<audio controls preload="none" src="${src}"></audio>`;
+}
+
+/** ข้อความต้นฉบับ ถ้ามาจากเสียงจะมีปุ่มฟังเสียงจริงอยู่ด้วย */
+function original({ text, source, messageId }) {
+  const voice = source === 'voice';
+  return `${voice ? `<p class="label">🎤 พูดมาเป็นเสียง · ข้อความด้านล่างถอดโดย AI</p>${voicePlayer(messageId)}` : ''}
+    <p>${escape(text).replace(/\n/g, '<br>') || '<em>(ถอดเสียงไม่ออก)</em>'}</p>`;
+}
+
 function quote(source) {
   return `<blockquote>
-    <p>${escape(source.text).replace(/\n/g, '<br>')}</p>
+    ${original({ text: source.text, source: source.source, messageId: source.message_id })}
     <cite>${escape(source.author)} · ${date(source.created_at)}</cite>
   </blockquote>`;
 }
@@ -240,7 +264,11 @@ function conflictEntry(conflict) {
     <header>${outcome}<span class="meta">${date(conflict.created_at)} · ${escape(conflict.author)}</span></header>
     <p><strong>ขัดกันตรงไหน:</strong> ${linkRules(escape(conflict.explanation))}</p>
     <p class="label">สิ่งที่ผู้สอนพูดมา</p>
-    <blockquote><p>${escape(conflict.original_text).replace(/\n/g, '<br>')}</p></blockquote>
+    <blockquote>${original({
+      text: conflict.original_text,
+      source: conflict.original_source,
+      messageId: conflict.message_id,
+    })}</blockquote>
     ${
       proposedLines.length
         ? `<p class="label">AI สรุปไว้ว่า</p>
@@ -252,7 +280,11 @@ function conflictEntry(conflict) {
     ${
       conflict.answer_text
         ? `<p class="label">ผู้สอนตอบ</p>
-           <blockquote><p>${escape(conflict.answer_text).replace(/\n/g, '<br>')}</p></blockquote>`
+           <blockquote>${original({
+             text: conflict.answer_text,
+             source: conflict.answer_source,
+             messageId: conflict.answer_message_id,
+           })}</blockquote>`
         : ''
     }
     ${conflict.decision ? `<p><strong>ข้อสรุป:</strong> ${linkRules(escape(conflict.decision))}</p>` : ''}
@@ -440,6 +472,8 @@ cite { color: var(--muted); font-size: .85rem; font-style: normal; }
 .change { border-top: 1px dashed var(--line); padding-top: 8px; margin-top: 8px; }
 .old { color: var(--muted); font-size: .92rem; }
 .label { color: var(--muted); font-size: .85rem; font-weight: 600; margin: 12px 0 2px; }
+blockquote .label { margin-top: 0; }
+audio { display: block; width: 100%; max-width: 360px; height: 36px; margin: 4px 0 8px; }
 @media print {
   body { background: #fff; font-size: 12pt; }
   .rule, .conflict, .howto, .toc { break-inside: avoid; }

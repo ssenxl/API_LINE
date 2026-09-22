@@ -1,9 +1,10 @@
 import crypto from 'node:crypto';
 import express from 'express';
-import { renderBook } from './book.js';
+import { audioSignature, renderBook } from './book.js';
 import { config } from './config.js';
 import { migrate } from './db.js';
 import { handleEvent } from './handler.js';
+import { getAudio } from './knowledge.js';
 import { startKeepAlive } from './keepalive.js';
 import { verifySignature } from './line.js';
 
@@ -63,6 +64,48 @@ app.get('/book', (req, res) => {
       .send('ต้องเปิดจากลิงก์ที่ได้จากบอท (พิมพ์ "หนังสือ" ใน LINE)');
   }
   sendBook(res);
+});
+
+// ไฟล์เสียงต้นฉบับ ใช้กับปุ่มฟังเสียงในหนังสือ
+app.get('/audio/:id', async (req, res) => {
+  const id = Number(req.params.id);
+  const sig = Buffer.from(String(req.query.sig ?? ''));
+  const expected = Buffer.from(Number.isInteger(id) ? audioSignature(id) : '');
+  if (!expected.length || sig.length !== expected.length || !crypto.timingSafeEqual(sig, expected)) {
+    return res.status(404).end();
+  }
+
+  try {
+    const audio = await getAudio(id);
+    if (!audio) return res.status(404).end();
+
+    const data = audio.data;
+    res.set({
+      'Content-Type': audio.mime,
+      'Accept-Ranges': 'bytes',
+      'Cache-Control': 'private, max-age=86400',
+    });
+
+    // Safari บน iPhone ขอไฟล์เสียงเป็นช่วง ๆ (Range) ถ้าตอบทั้งไฟล์ไปมันจะไม่ยอมเล่น
+    const range = /^bytes=(\d*)-(\d*)$/.exec(req.get('range') ?? '');
+    if (range) {
+      let start = range[1] === '' ? data.length - Number(range[2]) : Number(range[1]);
+      let end = range[1] !== '' && range[2] !== '' ? Number(range[2]) : data.length - 1;
+      start = Math.max(0, start);
+      end = Math.min(end, data.length - 1);
+      if (start > end) {
+        return res.status(416).set('Content-Range', `bytes */${data.length}`).end();
+      }
+      return res
+        .status(206)
+        .set('Content-Range', `bytes ${start}-${end}/${data.length}`)
+        .send(data.subarray(start, end + 1));
+    }
+    res.send(data);
+  } catch (err) {
+    console.error('[server] ส่งไฟล์เสียงไม่สำเร็จ:', err);
+    res.status(500).end();
+  }
 });
 
 // ลิงก์สั้นไว้ส่งต่อ เช่น /scm-book ชื่อ path นี้ทำหน้าที่เป็นรหัสผ่านไปในตัว
