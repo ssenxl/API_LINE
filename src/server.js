@@ -1,7 +1,5 @@
-import crypto from 'node:crypto';
 import express from 'express';
 import { config } from './config.js';
-import { runDiagnostics } from './diag.js';
 import { verifySignature } from './line.js';
 import { handleEvent } from './handler.js';
 import { startKeepAlive } from './keepalive.js';
@@ -19,19 +17,6 @@ app.use(
 
 // ไว้ให้ uptime monitor หรือ Cloud Run เช็กว่าเซิร์ฟเวอร์ยังอยู่
 app.get('/health', (_req, res) => res.json({ ok: true }));
-
-// หน้าตรวจสอบชั่วคราว ซ่อนไว้หลัง path ลับที่คำนวณจาก channel secret
-// คนที่ไม่มี channel secret เดา path นี้ไม่ได้ ลบทิ้งได้เมื่อบอททำงานปกติแล้ว
-const DIAG_KEY = crypto
-  .createHash('sha256')
-  .update(config.line.channelSecret)
-  .digest('hex')
-  .slice(0, 16);
-
-app.get(`/diag/${DIAG_KEY}`, async (_req, res) => {
-  res.json(await runDiagnostics());
-});
-
 app.post('/webhook', (req, res) => {
   if (!verifySignature(req.rawBody, req.get('x-line-signature'))) {
     console.warn('[server] signature ไม่ถูกต้อง ปฏิเสธ request');
