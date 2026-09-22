@@ -87,7 +87,9 @@ export async function handleEvent(event) {
 
   const userId = event.source?.userId;
   const replyToken = event.replyToken;
-  const text = event.message.text.trim();
+  // เก็บต้นฉบับตามที่ผู้ใช้พิมพ์มาทุกตัวอักษร ห้ามแก้ ส่วน text ใช้ตัดสินใจเท่านั้น
+  const original = event.message.text;
+  const text = original.trim();
   if (!userId || !text) return;
 
   const command = text.toLowerCase();
@@ -107,7 +109,7 @@ export async function handleEvent(event) {
   }
 
   try {
-    await inOrder(userId, () => respond({ userId, replyToken, text, command }));
+    await inOrder(userId, () => respond({ userId, replyToken, text, original, command }));
   } catch (err) {
     console.error('[handler] ตอบข้อความไม่สำเร็จ:', err);
     // อย่าให้ error ทำให้ผู้ใช้เงียบหาย ต้องตอบอะไรกลับไปเสมอ
@@ -117,7 +119,7 @@ export async function handleEvent(event) {
   }
 }
 
-async function respond({ userId, replyToken, text, command }) {
+async function respond({ userId, replyToken, text, original, command }) {
   const user = await kb.getUser(userId);
   if (!user?.display_name) {
     const profile = await getProfile(userId);
@@ -132,7 +134,7 @@ async function respond({ userId, replyToken, text, command }) {
 
   // ดึงแชทก่อนหน้า "ก่อน" บันทึกข้อความนี้ ไม่งั้นข้อความนี้จะซ้ำสองรอบใน context
   const history = await kb.recentMessages(userId);
-  const messageId = await kb.saveMessage(userId, 'user', text);
+  const messageId = await kb.saveMessage(userId, 'user', original);
   const isTeacher = config.teachers.has(userId);
 
   let reply = null;
