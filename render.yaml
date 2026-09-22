@@ -1,0 +1,26 @@
+# Render Blueprint — Render อ่านไฟล์นี้แล้วสร้าง service ให้อัตโนมัติ
+# https://render.com/docs/blueprint-spec
+services:
+  - type: web
+    name: line-ai-bridge
+    runtime: node
+    # starter = ไม่หลับ ($7/เดือน) เปลี่ยนเป็น free ได้ถ้ายอมให้หลับ
+    plan: starter
+    # สิงคโปร์ใกล้ไทยที่สุด ตอบไวกว่าฝั่งอเมริกาหลายร้อยมิลลิวินาที
+    region: singapore
+    buildCommand: npm ci
+    startCommand: npm start
+    # Render เรียก path นี้เช็กว่าเวอร์ชันใหม่พร้อมแล้วค่อยสลับ ทำให้ deploy ได้โดยไม่มีช่วงล่ม
+    healthCheckPath: /health
+    envVars:
+      # sync: false = ไม่เก็บค่าไว้ในไฟล์นี้ ต้องไปกรอกเองในหน้า Environment ของ Render
+      - key: LINE_CHANNEL_SECRET
+        sync: false
+      - key: LINE_CHANNEL_ACCESS_TOKEN
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_MODEL
+        value: gpt-4o-mini
+      - key: SYSTEM_PROMPT
+        value: คุณเป็นผู้ช่วยของ LINE Official Account ตอบเป็นภาษาไทยสั้น กระชับ สุภาพ ถ้าไม่รู้ให้บอกตรง ๆ ว่าไม่ทราบ
