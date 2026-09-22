@@ -4,8 +4,9 @@ services:
   - type: web
     name: line-ai-bridge
     runtime: node
-    # starter = ไม่หลับ ($7/เดือน) เปลี่ยนเป็น free ได้ถ้ายอมให้หลับ
-    plan: starter
+    # free = ฟรี แต่หลับเมื่อไม่มี request เข้า 15 นาที
+    # จึงต้องมีตัวยิง /health กันหลับ (ดู src/keepalive.js และหัวข้อ "เรื่องเครื่องหลับ" ใน README)
+    plan: free
     # สิงคโปร์ใกล้ไทยที่สุด ตอบไวกว่าฝั่งอเมริกาหลายร้อยมิลลิวินาที
     region: singapore
     buildCommand: npm ci

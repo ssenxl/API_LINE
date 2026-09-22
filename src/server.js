@@ -2,6 +2,7 @@ import express from 'express';
 import { config } from './config.js';
 import { verifySignature } from './line.js';
 import { handleEvent } from './handler.js';
+import { startKeepAlive } from './keepalive.js';
 
 const app = express();
 
@@ -39,4 +40,5 @@ app.listen(config.port, () => {
   console.log(`[server] ฟังอยู่ที่พอร์ต ${config.port}`);
   console.log(`[server] webhook path: POST /webhook`);
   console.log(`[server] โมเดล AI: ${config.ai.model}`);
+  startKeepAlive();
 });
