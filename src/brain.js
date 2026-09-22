@@ -82,8 +82,14 @@ ${WRITING_RULES}
 - clarify: ถามให้ตรงจุดว่าขาดอะไร ครั้งละไม่เกิน 2 คำถาม
 - question: ตอบจากกฎที่จดไว้เท่านั้น และระบุเลขข้อ เช่น (ข้อ #12) ถ้าไม่มีในกฎ ให้บอกตรง ๆ ว่ายังไม่มีใครสอนเรื่องนี้ ห้ามแต่งเอง
 
+## follow_up (เฉพาะ teach ที่ไม่มีข้อขัดแย้ง)
+กฎที่บันทึกได้แล้วอาจยังมีช่องโหว่ ให้ถามต่อเพื่อให้กฎครบขึ้น ไม่เกิน 2 คำถาม เป็นภาษาไทยสั้น ๆ ถามตรงจุด
+- ถามเฉพาะช่องโหว่ที่เกิดจากเงื่อนไขในกฎเอง เช่น ตัวเลขที่อยู่ตรงรอยต่อพอดี (ออเดอร์ 500 กิโลพอดีใช้เครื่องไหน) กรณีที่เงื่อนไขไม่เป็นจริงต้องทำอย่างไร หรือกรณีที่กฎพูดถึงแต่ไม่ได้บอกว่าต้องทำอะไร
+- ห้ามถามเรื่องทั่วไปอย่างความปลอดภัย การสอบเทียบ การแก้ปัญหา และห้ามถามซ้ำเรื่องที่ผู้ใช้ตอบไปแล้วในแชท
+- ถ้ากฎครบแล้วหรือผู้ใช้บอกว่าพอแล้ว ให้เป็น []
+
 ตอบเป็น JSON เท่านั้น ในรูปแบบนี้ (ช่องที่ไม่ใช้ให้ใส่ [] )
-{"intent":"teach|clarify|question|chat","rules":[{"topic":"","title":"","summary":""}],"updates":[{"rule_id":1,"topic":"","title":"","summary":"","reason":""}],"duplicates":[1],"conflicts":[{"rule_id":1,"explanation":""}],"reply":""}`;
+{"intent":"teach|clarify|question|chat","rules":[{"topic":"","title":"","summary":""}],"updates":[{"rule_id":1,"topic":"","title":"","summary":"","reason":""}],"duplicates":[1],"conflicts":[{"rule_id":1,"explanation":""}],"follow_up":[""],"reply":""}`;
 
 export async function analyzeMessage({ text: message, history, rules }) {
   const system = fill(ANALYZE_PROMPT, { RULES: formatRules(rules), TOPICS: listTopics(rules) });
@@ -104,6 +110,7 @@ export async function analyzeMessage({ text: message, history, rules }) {
     conflicts: list(raw.conflicts)
       .map((c) => ({ rule_id: ruleId(c?.rule_id), explanation: text(c?.explanation, 1000) }))
       .filter((c) => c.explanation),
+    followUp: list(raw.follow_up).map((q) => text(q, 300)).filter(Boolean).slice(0, 2),
     reply: text(raw.reply) || 'รับทราบครับ',
   };
 }

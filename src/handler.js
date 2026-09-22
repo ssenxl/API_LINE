@@ -248,6 +248,11 @@ async function handleMessage({ userId, messageId, text, history, isTeacher }) {
     const refs = duplicateIds.map((id) => `ข้อ #${id}`).join(', ');
     parts.push(`เรื่องนี้มีบันทึกไว้แล้วใน ${refs} ผมแนบคำพูดของคุณไว้เป็นหลักฐานเพิ่มแล้วครับ`);
   }
+  // ถามต่อเฉพาะเมื่อบันทึกอะไรใหม่จริง คำตอบรอบหน้าจะกลายเป็นการเพิ่มรายละเอียดให้กฎข้อนี้
+  if (saved.length > 0 && result.followUp.length > 0) {
+    const questions = result.followUp.map((q) => `- ${q}`).join('\n');
+    parts.push(`❓ ขอถามเพิ่มให้กฎครบขึ้นครับ\n${questions}\n(ไม่ทราบหรือไม่ต้องการตอบ ข้ามได้เลย)`);
+  }
   return parts.join('\n\n');
 }
 
