@@ -96,6 +96,23 @@ export async function deliver({ replyToken, userId, text }) {
 }
 
 /**
+ * ดึงชื่อที่แสดงใน LINE ไว้บอกในหนังสือว่าใครเป็นคนสอน
+ * ได้เฉพาะคนที่แอด OA เป็นเพื่อนแล้ว ถ้าไม่ได้ให้คืน null แทนการ throw
+ */
+export async function getProfile(userId) {
+  try {
+    const res = await fetch(`${API}/profile/${encodeURIComponent(userId)}`, {
+      headers: { Authorization: `Bearer ${config.line.accessToken}` },
+    });
+    if (!res.ok) throw new Error(`ตอบ ${res.status}`);
+    return await res.json();
+  } catch (err) {
+    console.warn('[line] ดึงโปรไฟล์ไม่สำเร็จ:', err.message);
+    return null;
+  }
+}
+
+/**
  * แสดงจุดสามจุดกระพริบระหว่างรอ AI ใช้ได้เฉพาะแชท 1:1 เท่านั้น
  * ถ้าพังไม่ต้องหยุดการทำงาน เพราะเป็นแค่ลูกเล่น
  */

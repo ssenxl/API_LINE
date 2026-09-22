@@ -3,7 +3,7 @@ import { config } from './config.js';
 
 /**
  * จุดเชื่อมกับ AI ภายนอกทั้งหมดอยู่ในไฟล์นี้ไฟล์เดียว
- * ถ้าจะเปลี่ยนไปใช้ AI เจ้าอื่นหรือ endpoint ของตัวเอง แก้แค่ askAI()
+ * ถ้าจะเปลี่ยนไปใช้ AI เจ้าอื่นหรือ endpoint ของตัวเอง แก้แค่ askJSON()
  */
 const client = new OpenAI({
   apiKey: config.ai.apiKey,
@@ -13,18 +13,34 @@ const client = new OpenAI({
 });
 
 /**
- * @param {Array<{role: 'user'|'assistant', content: string}>} history
- *        ประวัติการคุย รวมข้อความล่าสุดของผู้ใช้เป็นรายการสุดท้าย
- * @returns {Promise<string>} ข้อความตอบกลับ
+ * ถาม AI แล้วบังคับให้ตอบกลับเป็น JSON object
+ *
+ * @param {string} system คำสั่งหลัก ต้องมีคำว่า JSON อยู่ในนั้น (OpenAI บังคับ)
+ * @param {Array<{role: 'user'|'assistant', content: string}>} messages
+ * @returns {Promise<object>}
  */
-export async function askAI(history) {
+export async function askJSON(system, messages) {
   const completion = await client.chat.completions.create({
     model: config.ai.model,
-    max_tokens: config.ai.maxOutputTokens,
-    messages: [{ role: 'system', content: config.ai.systemPrompt }, ...history],
+    // ใช้ max_completion_tokens แทน max_tokens เพราะโมเดลตระกูล GPT-5 ไม่รับ max_tokens
+    // ส่วนโมเดลรุ่นเก่าอย่าง gpt-4o-mini รับได้ทั้งสองแบบ
+    max_completion_tokens: config.ai.maxOutputTokens,
+    // ส่งเฉพาะเมื่อตั้งค่าไว้ เพราะโมเดลรุ่นเก่าที่ไม่ได้ "คิด" ก่อนตอบจะปฏิเสธพารามิเตอร์นี้
+    ...(config.ai.reasoningEffort && { reasoning_effort: config.ai.reasoningEffort }),
+    response_format: { type: 'json_object' },
+    messages: [{ role: 'system', content: system }, ...messages],
   });
 
-  const text = completion.choices[0]?.message?.content?.trim();
-  if (!text) throw new Error('AI ตอบกลับมาเป็นค่าว่าง');
-  return text;
+  const choice = completion.choices[0];
+  const text = choice?.message?.content?.trim();
+  if (!text) {
+    // finish_reason = length แปลว่าโมเดลคิดจนหมดเพดาน token ก่อนจะได้ตอบ
+    throw new Error(`AI ตอบกลับมาเป็นค่าว่าง (finish_reason: ${choice?.finish_reason})`);
+  }
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error(`AI ตอบกลับมาไม่ใช่ JSON: ${text.slice(0, 200)}`);
+  }
 }

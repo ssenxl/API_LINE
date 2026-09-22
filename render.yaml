@@ -22,6 +22,18 @@ services:
       - key: OPENAI_API_KEY
         sync: false
       - key: OPENAI_MODEL
-        value: gpt-4o-mini
-      - key: SYSTEM_PROMPT
-        value: คุณเป็นผู้ช่วยของ LINE Official Account ตอบเป็นภาษาไทยสั้น กระชับ สุภาพ ถ้าไม่รู้ให้บอกตรง ๆ ว่าไม่ทราบ
+        value: gpt-5
+      # medium (ค่าเริ่มต้น) ใช้ ~30 วินาที เกินอายุ replyToken ของ LINE จึงลดเป็น low (~12-15 วินาที)
+      - key: OPENAI_REASONING_EFFORT
+        value: low
+      # Neon Postgres ต้องใช้ฐานข้อมูลภายนอก เพราะแพ็กเกจฟรีล้างไฟล์ทุกครั้งที่ restart
+      - key: DATABASE_URL
+        sync: false
+      # LINE userId ของคนที่สอนบอทได้ คั่นด้วย comma
+      - key: TEACHER_USER_IDS
+        sync: false
+      # รหัสสำหรับเปิดหน้าหนังสือ /book?key=...
+      - key: BOOK_KEY
+        sync: false
+      - key: BOOK_TITLE
+        value: สมุดความรู้ SCM
