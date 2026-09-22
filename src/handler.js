@@ -57,6 +57,7 @@ function inOrder(userId, task) {
 }
 
 function bookLink() {
+  if (config.book.slug) return `${config.publicUrl}/${config.book.slug}`;
   const key = config.book.key ? `?key=${encodeURIComponent(config.book.key)}` : '';
   return `${config.publicUrl}/book${key}`;
 }

@@ -35,5 +35,8 @@ services:
       # รหัสสำหรับเปิดหน้าหนังสือ /book?key=...
       - key: BOOK_KEY
         sync: false
+      # ลิงก์สั้นไว้ส่งต่อ เช่น scm-book → https://line-ai-bridge.onrender.com/scm-book
+      - key: BOOK_SLUG
+        sync: false
       - key: BOOK_TITLE
         value: สมุดความรู้ SCM

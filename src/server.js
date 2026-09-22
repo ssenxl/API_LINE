@@ -46,20 +46,30 @@ function keyMatches(given) {
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
-app.get('/book', async (req, res) => {
-  if (!keyMatches(req.query.key)) {
-    return res
-      .status(401)
-      .type('text/plain; charset=utf-8')
-      .send('ต้องเปิดจากลิงก์ที่ได้จากบอท (พิมพ์ "หนังสือ" ใน LINE)');
-  }
+async function sendBook(res) {
   try {
     res.type('html').send(await renderBook());
   } catch (err) {
     console.error('[server] สร้างหนังสือไม่สำเร็จ:', err);
     res.status(500).type('text/plain; charset=utf-8').send('สร้างหนังสือไม่สำเร็จ ลองใหม่อีกครั้ง');
   }
+}
+
+app.get('/book', (req, res) => {
+  if (!keyMatches(req.query.key)) {
+    return res
+      .status(401)
+      .type('text/plain; charset=utf-8')
+      .send('ต้องเปิดจากลิงก์ที่ได้จากบอท (พิมพ์ "หนังสือ" ใน LINE)');
+  }
+  sendBook(res);
 });
+
+// ลิงก์สั้นไว้ส่งต่อ เช่น /scm-book ชื่อ path นี้ทำหน้าที่เป็นรหัสผ่านไปในตัว
+// ใครรู้ชื่อก็เปิดได้ ถ้าหลุดไปถึงคนที่ไม่ควรเห็น ให้เปลี่ยน BOOK_SLUG
+if (config.book.slug) {
+  app.get(`/${config.book.slug}`, (_req, res) => sendBook(res));
+}
 
 try {
   await migrate();
