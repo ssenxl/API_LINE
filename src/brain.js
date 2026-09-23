@@ -57,6 +57,21 @@ const list = (value) => (Array.isArray(value) ? value : []);
 /** id ของกฎหรือของคำถาม AI อาจส่งเลขศูนย์ ค่าติดลบ หรือสตริงมา ต้องกรองทิ้ง */
 const posInt = (value) => (Number.isInteger(value) && value > 0 ? value : null);
 
+/**
+ * AI ชอบเขียนข้อย่อย "1) ... 2) ..." ต่อกันเป็นพรืดในบรรทัดเดียว อ่านยากบนจอมือถือ
+ * ถ้าเจอเลขข้อเรียง 1) 2) 3) ตามลำดับจริง ให้ขึ้นบรรทัดใหม่ให้ทุกข้อ
+ *
+ * เลขอ้างกฎอย่าง (ข้อ #12) ไม่โดนแตะ เพราะมี # คั่นหน้าตัวเลขอยู่
+ */
+function splitNumbered(value) {
+  // กินช่องว่างหน้าเลขข้อไปด้วย บรรทัดก่อนหน้าจะได้ไม่ลงท้ายด้วยช่องว่างลอย ๆ
+  // ถ้า AI ขึ้นบรรทัดใหม่มาให้อยู่แล้ว แทนที่ซ้ำก็ได้ผลเหมือนเดิม
+  const marker = /\s+(\d)\)\s+/g;
+  const numbers = [...value.matchAll(marker)].map((m) => Number(m[1]));
+  if (numbers.length < 2 || numbers.some((n, i) => n !== i + 1)) return value;
+  return value.replace(marker, (_m, n) => `\n${n}) `);
+}
+
 function cleanRule(raw) {
   const rule = {
     topic: text(raw?.topic, 100) || 'เรื่องทั่วไป',
@@ -104,6 +119,7 @@ ${WRITING_RULES}
 
 ## reply (ข้อความที่จะส่งกลับไปใน LINE)
 - ภาษาไทย สุภาพ กระชับ เป็นกันเอง ลงท้ายด้วย "ครับ" ไม่ใช้ markdown เพราะ LINE ไม่แสดงผล
+- ถ้ามีหลายข้อ ต้องขึ้นบรรทัดใหม่ทุกข้อ ห้ามเขียน "1) ... 2) ..." ต่อกันในบรรทัดเดียว เพราะอ่านบนมือถือแล้วตาลาย
 - teach ที่ไม่มีข้อขัดแย้ง: ตอบรับสั้น ๆ ประโยคเดียว ไม่ต้องทวนกฎ เพราะระบบจะแนบรายการที่บันทึกให้เอง
 - ห้ามถามคำถามต่อท้ายเองใน reply ระบบจะวิเคราะห์ช่องโหว่แล้วถามให้ในขั้นตอนถัดไป
 - clarify: ถามให้ตรงจุดว่าขาดอะไร ครั้งละไม่เกิน 2 คำถาม
@@ -137,7 +153,7 @@ export async function analyzeMessage({ text: message, history, rules, pending = 
       .filter((c) => c.explanation),
     answered: list(raw.answered).map(posInt).filter(Boolean),
     skipped: list(raw.skipped).map(posInt).filter(Boolean),
-    reply: text(raw.reply) || 'รับทราบครับ',
+    reply: splitNumbered(text(raw.reply)) || 'รับทราบครับ',
   };
 }
 
@@ -172,6 +188,7 @@ const RESOLVE_PROMPT = `คุณคือ "บรรณารักษ์คว
 ${WRITING_RULES}
 
 reply คือข้อความที่จะส่งกลับไปใน LINE เป็นภาษาไทย สั้น สุภาพ ไม่ใช้ markdown
+ถ้ามีหลายข้อ ต้องขึ้นบรรทัดใหม่ทุกข้อ ห้ามเขียน "1) ... 2) ..." ต่อกันในบรรทัดเดียว
 ถ้า resolved ไม่ต้องทวนกฎ ระบบจะแนบรายการที่บันทึกให้เอง
 
 ตอบเป็น JSON เท่านั้น ในรูปแบบนี้
@@ -204,7 +221,7 @@ export async function resolveConflict({ conflict, originalText, oldRules, text: 
     retireIds: list(raw.retire_rule_ids).map(posInt).filter((id) => allowed.has(id)),
     addRules: list(raw.add_rules).map(cleanRule).filter(Boolean),
     decision: text(raw.decision, 1000),
-    reply: text(raw.reply) || 'รับทราบครับ',
+    reply: splitNumbered(text(raw.reply)) || 'รับทราบครับ',
   };
 }
 
