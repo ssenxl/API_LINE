@@ -102,7 +102,7 @@ export function cardText(card) {
       : card.kind === 'retired'
         ? `🗂 เลิกใช้ข้อ #${card.id}`
         : `📝 บันทึกข้อ #${card.id}`;
-  return `${head} · ${card.topic}\n${card.summary}`;
+  return `${head}\n${card.topic}\n${card.summary}`;
 }
 
 function ruleBubble(card) {
