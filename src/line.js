@@ -60,39 +60,48 @@ function toTextMessages(text) {
   return chunks.map((t) => ({ type: 'text', text: t }));
 }
 
-export async function replyMessage(replyToken, text) {
-  await callLine('/message/reply', {
-    replyToken,
-    messages: toTextMessages(text),
-  });
-}
-
-export async function pushMessage(to, text) {
-  await callLine('/message/push', {
-    to,
-    messages: toTextMessages(text),
-  });
-}
-
 /**
- * ส่งข้อความกลับหาผู้ใช้ โดยพยายามใช้ reply ก่อนเพราะฟรีและไม่กินโควต้า
+ * ส่งชุดข้อความที่ประกอบไว้แล้ว โดยพยายามใช้ reply ก่อนเพราะฟรีและไม่กินโควต้า
  * ถ้า replyToken หมดอายุ (AI ตอบช้าเกิน 30 วินาที) ค่อย fallback ไป push
  */
-export async function deliver({ replyToken, userId, text }) {
+async function send({ replyToken, userId, messages }) {
   if (replyToken) {
     try {
-      await replyMessage(replyToken, text);
+      await callLine('/message/reply', { replyToken, messages });
       return 'reply';
     } catch (err) {
       // 400 = token หมดอายุหรือถูกใช้ไปแล้ว กรณีอื่นถือว่าเป็นปัญหาจริง
       if (err.status !== 400 || !userId) throw err;
-      console.warn('[line] replyToken ใช้ไม่ได้ เปลี่ยนไปใช้ push:', err.message);
+      console.warn('[line] reply ไม่สำเร็จ เปลี่ยนไปใช้ push:', err.message);
     }
   }
 
   if (!userId) throw new Error('ไม่มีทั้ง replyToken ที่ใช้ได้และ userId');
-  await pushMessage(userId, text);
+  await callLine('/message/push', { to: userId, messages });
   return 'push';
+}
+
+/**
+ * ส่งข้อความกลับหาผู้ใช้
+ * - messages: LINE message object ที่ประกอบไว้แล้ว (เช่น flex) ไม่ใส่มาก็จะใช้ text แทน
+ * - text: ต้องมีเสมอ ใช้เป็นตัวสำรองถ้าการ์ดถูก LINE ปฏิเสธ ผู้ใช้จะได้ไม่เงียบหาย
+ * - quickReply: ปุ่มลัด ติดได้กับข้อความสุดท้ายเท่านั้น
+ */
+export async function deliver({ replyToken, userId, text, messages, quickReply }) {
+  const withQuickReply = (list) => {
+    if (!quickReply) return list;
+    return [...list.slice(0, -1), { ...list[list.length - 1], quickReply }];
+  };
+
+  try {
+    const list = messages?.length ? messages.slice(0, MAX_MESSAGES) : toTextMessages(text);
+    return await send({ replyToken, userId, messages: withQuickReply(list) });
+  } catch (err) {
+    if (!messages?.length) throw err;
+    // การ์ดผิดรูปแบบไม่ควรทำให้ผู้ใช้ไม่ได้รับคำตอบเลย ถอยไปส่งข้อความธรรมดาแทน
+    console.error('[line] ส่งการ์ดไม่สำเร็จ ถอยไปส่งข้อความธรรมดา:', err.message);
+    return await send({ replyToken, userId, messages: withQuickReply(toTextMessages(text)) });
+  }
 }
 
 /**

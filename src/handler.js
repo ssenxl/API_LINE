@@ -1,5 +1,6 @@
 import { transcribe } from './ai.js';
 import { analyzeMessage, resolveConflict } from './brain.js';
+import { bookCard, bookLink, cardText, conflictCard, quickReply, ruleCards } from './cards.js';
 import { config } from './config.js';
 import * as kb from './knowledge.js';
 import { deliver, getMessageContent, getProfile, showLoading } from './line.js';
@@ -15,12 +16,19 @@ const ERROR_REPLY ='ขออภัยครับ ระบบขัดข้�
 const NOT_TEACHER_REPLY =
   'ขอบคุณที่เล่าให้ฟังครับ แต่บัญชีนี้ยังไม่มีสิทธิ์บันทึกความรู้เข้าหนังสือ ' +
   'ถ้าต้องการสอน ให้พิมพ์ "ไอดีของฉัน" แล้วส่งรหัสที่ได้ให้ผู้ดูแลเพิ่มสิทธิ์ให้';
+const PENDING_NOTE =
+  'ยังมีเรื่องที่ผมถามค้างไว้อยู่นะครับ ตอบเมื่อไหร่ก็ได้ หรือพิมพ์ "ยกเลิก" ถ้าไม่ต้องบันทึกเรื่องนั้น';
 const WELCOME =
   'สวัสดีครับ ผมเป็นผู้ช่วยจดความรู้ของทีม\n\n' +
   '• เล่ากฎหรือวิธีทำงานให้ฟังได้เลย ผมจะสรุปเก็บไว้ ถ้าขัดกับของเดิมจะถามกลับก่อนบันทึก\n' +
   '• ถามเรื่องที่เคยมีคนสอนไว้ได้\n' +
-  '• พิมพ์ "หนังสือ" เพื่อรับลิงก์อ่านความรู้ทั้งหมด\n' +
-  '• พิมพ์ "เริ่มใหม่" เพื่อเริ่มคุยเรื่องใหม่';
+  '• กดปุ่มด้านล่าง หรือพิมพ์คำสั่งก็ได้เหมือนกันครับ';
+
+const MENU = quickReply(
+  { label: '📖 หนังสือ', text: 'หนังสือ' },
+  { label: '🆔 ไอดีของฉัน', text: 'ไอดีของฉัน' },
+  { label: '🔄 เริ่มใหม่', text: 'เริ่มใหม่' },
+);
 
 /**
  * LINE ยิง webhook ซ้ำได้เมื่อ network มีปัญหา จึงต้องกันประมวลผลซ้ำ
@@ -59,19 +67,43 @@ function inOrder(userId, task) {
   return current;
 }
 
-function bookLink() {
-  if (config.book.slug) return `${config.publicUrl}/${config.book.slug}`;
-  const key = config.book.key ? `?key=${encodeURIComponent(config.book.key)}` : '';
-  return `${config.publicUrl}/book${key}`;
-}
+const toCard = (rule, kind) => ({
+  kind: kind ?? rule.kind ?? 'new',
+  id: rule.id,
+  replaces: rule.replaces,
+  topic: rule.topic,
+  summary: rule.summary,
+});
 
-function describeSaved(saved) {
-  return saved
-    .map((r) => {
-      const label = r.replaces ? `✏️ ปรับข้อ #${r.replaces} เป็นข้อ #${r.id}` : `📝 บันทึกข้อ #${r.id}`;
-      return `${label} · ${r.topic}\n${r.title}\n${r.summary}`;
-    })
-    .join('\n\n');
+/**
+ * ประกอบผลลัพธ์เป็นชุดข้อความที่ส่งจริง พร้อมข้อความธรรมดาที่สื่อความหมายเดียวกัน
+ *
+ * ข้อความธรรมดาใช้สองที่ คือเก็บลงประวัติแชทให้ AI เห็นในรอบถัดไป
+ * และเป็นตัวสำรองถ้า LINE ปฏิเสธการ์ด
+ *
+ * ส่งได้ไม่เกิน 5 ข้อความต่อครั้ง ที่นี่จึงรวมให้เหลืออย่างมาก 3 ก้อน
+ * คือข้อความนำ การ์ด และหมายเหตุท้าย
+ */
+function render({ lead, cards = [], conflict = null, notes = [] }) {
+  const messages = [];
+  const lines = [];
+  const add = (message, text) => {
+    messages.push(message);
+    lines.push(text);
+  };
+
+  if (lead) add({ type: 'text', text: lead }, lead);
+  if (conflict) add(conflictCard(conflict), `⚠️ ${conflict}`);
+
+  const rules = ruleCards(cards);
+  if (rules) add(rules, cards.map(cardText).join('\n\n'));
+
+  if (notes.length > 0) {
+    const text = notes.join('\n\n');
+    add({ type: 'text', text }, text);
+  }
+
+  return { messages, text: lines.join('\n\n') };
 }
 
 export async function handleEvent(event) {
@@ -81,7 +113,12 @@ export async function handleEvent(event) {
   }
 
   if (event.type === 'follow') {
-    await deliver({ replyToken: event.replyToken, userId: event.source?.userId, text: WELCOME });
+    await deliver({
+      replyToken: event.replyToken,
+      userId: event.source?.userId,
+      text: WELCOME,
+      quickReply: MENU,
+    });
     return;
   }
 
@@ -111,7 +148,13 @@ export async function handleEvent(event) {
       return;
     }
     if (BOOK_KEYWORDS.includes(command)) {
-      await deliver({ replyToken, userId, text: `อ่านหนังสือความรู้ของทีมได้ที่\n${bookLink()}` });
+      const card = bookCard();
+      await deliver({
+        replyToken,
+        userId,
+        text: `อ่านหนังสือความรู้ของทีมได้ที่\n${bookLink()}`,
+        messages: card ? [card] : null,
+      });
       return;
     }
   }
@@ -168,7 +211,7 @@ async function respond({ userId, replyToken, message }) {
       return;
     }
     text = transcript;
-    heard = `🎤 ผมได้ยินว่า: "${transcript}"\n\n`;
+    heard = `🎤 ได้ยินว่า “${transcript}”`;
   } else {
     text = message.text.trim();
     messageId = await kb.saveMessage(userId, 'user', message.text);
@@ -185,21 +228,22 @@ async function respond({ userId, replyToken, message }) {
   if (heard) text = `[ข้อความนี้ถอดจากเสียงพูด อาจมีคำที่ฟังผิด ถ้าตัวเลขหรือชื่อดูแปลกให้ถามยืนยัน]\n${text}`;
   const isTeacher = config.teachers.has(userId);
 
-  let reply = null;
+  let result = null;
   const conflict = isTeacher ? await kb.getOpenConflict(userId) : null;
   if (conflict) {
-    reply = await answerConflict({ conflict, userId, messageId, text, command, history });
+    result = await answerConflict({ conflict, userId, messageId, text, command, history });
   }
-  if (reply === null) {
-    reply = await handleMessage({ userId, messageId, text, history, isTeacher });
-    if (conflict) {
-      reply += '\n\n(ยังมีเรื่องขัดแย้งที่รอคำตอบจากคุณอยู่ ตอบได้ตลอด หรือพิมพ์ "ยกเลิก" ถ้าไม่ต้องบันทึก)';
-    }
+  if (result === null) {
+    result = await handleMessage({ userId, messageId, text, history, isTeacher });
+    // ตอบเรื่องอื่นไปแล้ว แต่ยังต้องเตือนว่าคำถามเดิมยังค้างอยู่
+    if (conflict) result.notes = [...(result.notes ?? []), PENDING_NOTE];
   }
 
-  reply = heard + reply;
-  await kb.saveMessage(userId, 'assistant', reply);
-  await deliver({ replyToken, userId, text: reply });
+  if (heard) result.lead = result.lead ? `${heard}\n\n${result.lead}` : heard;
+
+  const { messages, text: transcript } = render(result);
+  await kb.saveMessage(userId, 'assistant', transcript);
+  await deliver({ replyToken, userId, text: transcript, messages, quickReply: result.quickReply });
 }
 
 /** ข้อความทั่วไป: สอน ถาม หรือคุยเล่น */
@@ -208,9 +252,14 @@ async function handleMessage({ userId, messageId, text, history, isTeacher }) {
   const result = await analyzeMessage({ text, history, rules });
 
   if (result.intent === 'teach' || result.intent === 'clarify') {
-    if (!isTeacher) return NOT_TEACHER_REPLY;
+    if (!isTeacher) {
+      return {
+        lead: NOT_TEACHER_REPLY,
+        quickReply: quickReply({ label: '🆔 ไอดีของฉัน', text: 'ไอดีของฉัน' }),
+      };
+    }
   }
-  if (result.intent !== 'teach') return result.reply;
+  if (result.intent !== 'teach') return { lead: result.reply };
 
   // AI อาจอ้าง id ที่ไม่มีอยู่จริง กรองทิ้งก่อนแตะฐานข้อมูล
   const known = new Set(rules.map((r) => r.id));
@@ -231,7 +280,8 @@ async function handleMessage({ userId, messageId, text, history, isTeacher }) {
       explanation: conflicts.map((c) => c.explanation).join('\n'),
       question: result.reply,
     });
-    return `⚠️ ${result.reply}\n\n(ตอบกลับมาได้เลย หรือพิมพ์ "ยกเลิก" ถ้าไม่ต้องการบันทึกเรื่องนี้)`;
+    // คำถามอยู่ในการ์ดอยู่แล้ว ไม่ต้องมีข้อความนำซ้ำอีกชั้น
+    return { lead: '', conflict: result.reply };
   }
 
   const saved = await kb.saveTeaching({
@@ -242,18 +292,20 @@ async function handleMessage({ userId, messageId, text, history, isTeacher }) {
     duplicateIds,
   });
 
-  const parts = [result.reply];
-  if (saved.length > 0) parts.push(describeSaved(saved));
+  const notes = [];
   if (duplicateIds.length > 0) {
     const refs = duplicateIds.map((id) => `ข้อ #${id}`).join(', ');
-    parts.push(`เรื่องนี้มีบันทึกไว้แล้วใน ${refs} ผมแนบคำพูดของคุณไว้เป็นหลักฐานเพิ่มแล้วครับ`);
+    notes.push(`เรื่องนี้มีบันทึกไว้แล้วใน ${refs} ผมแนบคำพูดของคุณไว้เป็นหลักฐานเพิ่มแล้วครับ`);
   }
   // ถามต่อเฉพาะเมื่อบันทึกอะไรใหม่จริง คำตอบรอบหน้าจะกลายเป็นการเพิ่มรายละเอียดให้กฎข้อนี้
   if (saved.length > 0 && result.followUp.length > 0) {
-    const questions = result.followUp.map((q) => `- ${q}`).join('\n');
-    parts.push(`❓ ขอถามเพิ่มให้กฎครบขึ้นครับ\n${questions}\n(ไม่ทราบหรือไม่ต้องการตอบ ข้ามได้เลย)`);
+    const questions = result.followUp.map((q, i) => `${i + 1}. ${q}`).join('\n');
+    notes.push(
+      `❓ ขอถามเพิ่มอีกนิด ให้กฎข้อนี้ครบขึ้นครับ\n\n${questions}\n\nไม่ทราบหรือไม่อยากตอบ ข้ามได้เลยครับ`,
+    );
   }
-  return parts.join('\n\n');
+
+  return { lead: result.reply, cards: saved.map((r) => toCard(r)), notes };
 }
 
 /**
@@ -267,7 +319,7 @@ async function answerConflict({ conflict, userId, messageId, text, command, hist
       answerMessageId: messageId,
       decision: 'ผู้สอนยกเลิกเอง ไม่บันทึกเรื่องนี้',
     });
-    return 'ยกเลิกแล้วครับ ไม่ได้บันทึกเรื่องนี้ และกฎเดิมยังใช้ต่อตามปกติ';
+    return { lead: 'ยกเลิกแล้วครับ ไม่ได้บันทึกเรื่องนี้ และกฎเดิมยังใช้ต่อตามปกติ' };
   }
 
   const [original, oldRules] = await Promise.all([
@@ -286,14 +338,14 @@ async function answerConflict({ conflict, userId, messageId, text, command, hist
     case 'unrelated':
       return null;
     case 'ask_again':
-      return result.reply;
+      return { lead: '', conflict: result.reply };
     case 'cancelled':
       await kb.cancelConflict({
         conflictId: conflict.id,
         answerMessageId: messageId,
         decision: result.decision || 'ผู้สอนยกเลิก ไม่บันทึกเรื่องนี้',
       });
-      return result.reply;
+      return { lead: result.reply };
   }
 
   const { retired, added } = await kb.saveResolution({
@@ -305,11 +357,13 @@ async function answerConflict({ conflict, userId, messageId, text, command, hist
     decision: result.decision || result.reply,
   });
 
-  const parts = [result.reply];
-  if (retired.length > 0) {
-    parts.push(`🗂 เลิกใช้ ${retired.map((id) => `ข้อ #${id}`).join(', ')} (ยังเก็บไว้ในประวัติ)`);
-  }
-  if (added.length > 0) parts.push(describeSaved(added));
-  if (retired.length === 0 && added.length === 0) parts.push('กฎเดิมยังใช้ต่อ ไม่มีอะไรเปลี่ยน');
-  return parts.join('\n\n');
+  // กฎที่เลิกใช้ต้องหยิบเนื้อหามาจากฉบับเดิมที่ดึงไว้ก่อนหน้า saveResolution คืนมาแค่ id
+  const byId = new Map(oldRules.map((r) => [r.id, r]));
+  const cards = [
+    ...retired.map((id) => byId.get(id)).filter(Boolean).map((r) => toCard(r, 'retired')),
+    ...added.map((r) => toCard(r, 'new')),
+  ];
+  const notes = cards.length === 0 ? ['กฎเดิมยังใช้ต่อตามปกติ ไม่มีอะไรเปลี่ยน'] : [];
+
+  return { lead: result.reply, cards, notes };
 }
