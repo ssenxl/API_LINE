@@ -25,7 +25,11 @@ function fill(template, values) {
 function formatRules(rules) {
   if (rules.length === 0) return '(ยังไม่มี)';
   return rules
-    .map((r) => `#${r.id} [${r.topic}] ${r.title} — ${r.summary} (สอนโดย ${r.author})`)
+    .map((r) => {
+      // กฎที่เพิ่งบันทึกในรอบนี้ยังไม่มีชื่อผู้สอนติดมาด้วย
+      const by = r.author ? ` (สอนโดย ${r.author})` : '';
+      return `#${r.id} [${r.topic}] ${r.title} — ${r.summary}${by}`;
+    })
     .join('\n');
 }
 
@@ -34,12 +38,24 @@ function listTopics(rules) {
   return topics.length ? topics.join(', ') : '(ยังไม่มีบทไหน)';
 }
 
+/** คำถามที่ค้างอยู่ ใส่เลข Q ไว้ให้ AI อ้างกลับมาได้ว่าผู้ใช้ตอบข้อไหน */
+function formatQuestions(questions) {
+  if (questions.length === 0) return '(ไม่มี)';
+  return questions
+    .map((q) => {
+      const refs = list(q.rule_ids).map((id) => `#${id}`).join(', ');
+      return `[Q${q.id}]${refs ? ` (เกี่ยวกับข้อ ${refs})` : ''} ${q.question}`;
+    })
+    .join('\n');
+}
+
 // ---------- ตัวกรองผลลัพธ์จาก AI ----------
 
 const text = (value, max = 4000) =>
   typeof value === 'string' ? value.trim().slice(0, max) : '';
 const list = (value) => (Array.isArray(value) ? value : []);
-const ruleId = (value) => (Number.isInteger(value) && value > 0 ? value : null);
+/** id ของกฎหรือของคำถาม AI อาจส่งเลขศูนย์ ค่าติดลบ หรือสตริงมา ต้องกรองทิ้ง */
+const posInt = (value) => (Number.isInteger(value) && value > 0 ? value : null);
 
 function cleanRule(raw) {
   const rule = {
@@ -66,6 +82,9 @@ const ANALYZE_PROMPT = `คุณคือ "บรรณารักษ์คว
 ## ชื่อบทที่มีอยู่แล้ว
 {TOPICS}
 
+## คำถามที่ผมถามค้างไว้ ยังไม่ได้คำตอบ
+{PENDING}
+
 ${WRITING_RULES}
 
 ## เทียบกับของเดิม (สำคัญที่สุด)
@@ -76,23 +95,29 @@ ${WRITING_RULES}
   - ถ้าเงื่อนไขต่างกันชัดเจน (คนละกรณี) ไม่ถือว่าขัดแย้ง
   - เมื่อมี conflicts ยังไม่ต้องตัดสินเอง ให้ใส่ rules/updates ตามที่ผู้ใช้พูดมาใหม่ไว้ แล้วใน reply ให้เล่าทั้งสองฝั่ง (ของเดิมว่าอย่างไร ใครสอน / ของใหม่ว่าอย่างไร) และถามว่าอันไหนถูก อันเก่าเลิกใช้แล้วหรือยัง หรือทั้งคู่ใช้คนละกรณี
 
+## คำตอบของคำถามที่ค้างอยู่ (สำคัญ)
+ข้อความล่าสุดอาจเป็นคำตอบของคำถามที่ผมถามค้างไว้ข้างบน โดยเฉพาะข้อความสั้น ๆ ที่ลอยมาเฉย ๆ เช่น "ใช้เฉพาะกลางคืน" หรือ "ไม่ต้อง" ให้อ่านประกอบคำถามที่ค้างก่อนตัดสินว่าเป็นอะไร
+- ถ้าเป็นคำตอบ ให้ intent เป็น teach แล้วเอาคำตอบไปรวมกับกฎที่คำถามนั้นเกี่ยวข้องผ่าน updates โดยเขียน summary ฉบับใหม่ที่รวมของเดิมกับเงื่อนไขที่เพิ่งได้มาให้ครบ ไม่ต้องสร้างกฎใหม่แยก เว้นแต่คำตอบเป็นคนละกรณีกันจริง ๆ
+- ใส่เลข Q ของคำถามที่ถูกตอบใน answered (ใส่เฉพาะเลขที่อยู่ในรายการข้างบน)
+- ถ้าผู้ใช้บอกว่าไม่ทราบ ไม่อยากตอบ ขอข้าม หรือพอแล้ว ให้ใส่เลข Q นั้นใน skipped
+- ถ้าผู้ใช้พูดเรื่องอื่นที่ไม่เกี่ยวกับคำถามที่ค้าง ให้ answered กับ skipped เป็น [] แล้วทำงานตามปกติ
+
 ## reply (ข้อความที่จะส่งกลับไปใน LINE)
-- ภาษาไทย สุภาพ กระชับ เป็นกันเอง ไม่ใช้ markdown เพราะ LINE ไม่แสดงผล
+- ภาษาไทย สุภาพ กระชับ เป็นกันเอง ลงท้ายด้วย "ครับ" ไม่ใช้ markdown เพราะ LINE ไม่แสดงผล
 - teach ที่ไม่มีข้อขัดแย้ง: ตอบรับสั้น ๆ ประโยคเดียว ไม่ต้องทวนกฎ เพราะระบบจะแนบรายการที่บันทึกให้เอง
+- ห้ามถามคำถามต่อท้ายเองใน reply ระบบจะวิเคราะห์ช่องโหว่แล้วถามให้ในขั้นตอนถัดไป
 - clarify: ถามให้ตรงจุดว่าขาดอะไร ครั้งละไม่เกิน 2 คำถาม
 - question: ตอบจากกฎที่จดไว้เท่านั้น และระบุเลขข้อ เช่น (ข้อ #12) ถ้าไม่มีในกฎ ให้บอกตรง ๆ ว่ายังไม่มีใครสอนเรื่องนี้ ห้ามแต่งเอง
 
-## follow_up (เฉพาะ teach ที่ไม่มีข้อขัดแย้ง)
-กฎที่บันทึกได้แล้วอาจยังมีช่องโหว่ ให้ถามต่อเพื่อให้กฎครบขึ้น ไม่เกิน 2 คำถาม เป็นภาษาไทยสั้น ๆ ถามตรงจุด
-- ถามเฉพาะช่องโหว่ที่เกิดจากเงื่อนไขในกฎเอง เช่น ตัวเลขที่อยู่ตรงรอยต่อพอดี (ออเดอร์ 500 กิโลพอดีใช้เครื่องไหน) กรณีที่เงื่อนไขไม่เป็นจริงต้องทำอย่างไร หรือกรณีที่กฎพูดถึงแต่ไม่ได้บอกว่าต้องทำอะไร
-- ห้ามถามเรื่องทั่วไปอย่างความปลอดภัย การสอบเทียบ การแก้ปัญหา และห้ามถามซ้ำเรื่องที่ผู้ใช้ตอบไปแล้วในแชท
-- ถ้ากฎครบแล้วหรือผู้ใช้บอกว่าพอแล้ว ให้เป็น []
-
 ตอบเป็น JSON เท่านั้น ในรูปแบบนี้ (ช่องที่ไม่ใช้ให้ใส่ [] )
-{"intent":"teach|clarify|question|chat","rules":[{"topic":"","title":"","summary":""}],"updates":[{"rule_id":1,"topic":"","title":"","summary":"","reason":""}],"duplicates":[1],"conflicts":[{"rule_id":1,"explanation":""}],"follow_up":[""],"reply":""}`;
+{"intent":"teach|clarify|question|chat","rules":[{"topic":"","title":"","summary":""}],"updates":[{"rule_id":1,"topic":"","title":"","summary":"","reason":""}],"duplicates":[1],"conflicts":[{"rule_id":1,"explanation":""}],"answered":[1],"skipped":[1],"reply":""}`;
 
-export async function analyzeMessage({ text: message, history, rules }) {
-  const system = fill(ANALYZE_PROMPT, { RULES: formatRules(rules), TOPICS: listTopics(rules) });
+export async function analyzeMessage({ text: message, history, rules, pending = [] }) {
+  const system = fill(ANALYZE_PROMPT, {
+    RULES: formatRules(rules),
+    TOPICS: listTopics(rules),
+    PENDING: formatQuestions(pending),
+  });
   const raw = await askJSON(system, [...history, { role: 'user', content: message }]);
 
   const intents = ['teach', 'clarify', 'question', 'chat'];
@@ -102,15 +127,16 @@ export async function analyzeMessage({ text: message, history, rules }) {
     updates: list(raw.updates)
       .map((u) => {
         const rule = cleanRule(u);
-        const id = ruleId(u?.rule_id);
+        const id = posInt(u?.rule_id);
         return rule && id ? { ...rule, rule_id: id, reason: text(u.reason, 500) } : null;
       })
       .filter(Boolean),
-    duplicates: list(raw.duplicates).map(ruleId).filter(Boolean),
+    duplicates: list(raw.duplicates).map(posInt).filter(Boolean),
     conflicts: list(raw.conflicts)
-      .map((c) => ({ rule_id: ruleId(c?.rule_id), explanation: text(c?.explanation, 1000) }))
+      .map((c) => ({ rule_id: posInt(c?.rule_id), explanation: text(c?.explanation, 1000) }))
       .filter((c) => c.explanation),
-    followUp: list(raw.follow_up).map((q) => text(q, 300)).filter(Boolean).slice(0, 2),
+    answered: list(raw.answered).map(posInt).filter(Boolean),
+    skipped: list(raw.skipped).map(posInt).filter(Boolean),
     reply: text(raw.reply) || 'รับทราบครับ',
   };
 }
@@ -175,17 +201,64 @@ export async function resolveConflict({ conflict, originalText, oldRules, text: 
   const allowed = new Set(conflict.rule_ids);
   return {
     status: statuses.includes(raw.status) ? raw.status : 'ask_again',
-    retireIds: list(raw.retire_rule_ids).map(ruleId).filter((id) => allowed.has(id)),
+    retireIds: list(raw.retire_rule_ids).map(posInt).filter((id) => allowed.has(id)),
     addRules: list(raw.add_rules).map(cleanRule).filter(Boolean),
     decision: text(raw.decision, 1000),
     reply: text(raw.reply) || 'รับทราบครับ',
   };
 }
 
-// ---------- 3. เรียบเรียงบทในหนังสือ ----------
+// ---------- 3. หาช่องโหว่ของกฎ เพื่อถามผู้สอนกลับ ----------
+
+/** หาได้ทีละไม่เกินกี่ข้อต่อการบันทึกหนึ่งครั้ง เก็บค้างไว้ถามทีหลังได้ ไม่ต้องยิงรัว */
+const MAX_GAPS = 3;
+
+const GAPS_PROMPT = `คุณคือ "บรรณารักษ์ความรู้" ของทีม เพิ่งมีคนสอนเรื่องในบท "{TOPIC}" เข้ามา
+หน้าที่ตอนนี้คือ อ่านกฎทั้งบทแล้วหาว่ายังขาดมุมไหน ที่ต้องถามผู้สอนกลับไปตอนที่เขายังอยู่ในแชท
+
+## กฎทั้งหมดในบทนี้ตอนนี้
+{RULES}
+
+## กฎที่เพิ่งบันทึกหรือเพิ่งปรับในรอบนี้
+{NEW}
+
+## คำถามที่เคยถามไปแล้วในบทนี้ (ห้ามถามซ้ำ ไม่ว่าจะได้คำตอบหรือไม่)
+{ASKED}
+
+หาช่องโหว่ที่ทำให้คนอ่านกฎแล้วยังทำงานต่อไม่ถูก ไม่เกิน ${MAX_GAPS} ข้อ เรียงจากสำคัญที่สุดก่อน
+- ถามเฉพาะช่องโหว่ที่เกิดจากเงื่อนไขในกฎเอง เช่น ตัวเลขที่อยู่ตรงรอยต่อพอดี (ออเดอร์ 500 กิโลพอดีใช้เครื่องไหน) กรณีที่เงื่อนไขไม่เป็นจริงต้องทำอย่างไร หรือกรณีที่กฎพูดถึงแต่ไม่ได้บอกว่าต้องทำอะไรต่อ
+- ห้ามถามเรื่องทั่วไปอย่างความปลอดภัย การสอบเทียบ การแก้ปัญหา หรือเรื่องที่ไม่มีในกฎเลย
+- ห้ามถามเรื่องที่กฎข้ออื่นในบทนี้ตอบไว้แล้ว
+- ถ้ากฎครบพอให้ทำงานต่อได้แล้ว ให้เป็น [] ดีกว่าถามเรื่องไร้สาระ
+- question: ภาษาไทย ประโยคเดียว สั้น ถามตรงจุด อ่านแล้วรู้ทันทีว่าถามถึงกรณีไหน ไม่ต้องขึ้นต้นว่า "ขอถามเพิ่ม"
+- rule_ids: เลขข้อที่คำถามนี้เกี่ยวข้อง เลือกจากกฎในบทนี้เท่านั้น
+
+ตอบเป็น JSON เท่านั้น ในรูปแบบนี้
+{"questions":[{"question":"","rule_ids":[1]}]}`;
+
+export async function findGaps({ topic, rules, newRules, asked }) {
+  const system = fill(GAPS_PROMPT, {
+    TOPIC: topic,
+    RULES: formatRules(rules),
+    NEW: formatRules(newRules),
+    ASKED: asked.length ? asked.map((q) => `- ${q.question}`).join('\n') : '(ยังไม่เคยถาม)',
+  });
+  const raw = await askJSON(system, [{ role: 'user', content: `หาช่องโหว่ของบท "${topic}"` }]);
+
+  const known = new Set(rules.map((r) => r.id));
+  return list(raw.questions)
+    .map((q) => ({
+      question: text(q?.question, 300),
+      rule_ids: list(q?.rule_ids).map(posInt).filter((id) => known.has(id)),
+    }))
+    .filter((q) => q.question)
+    .slice(0, MAX_GAPS);
+}
+
+// ---------- 4. เรียบเรียงบทในหนังสือ ----------
 
 // เปลี่ยนเลขนี้เมื่อแก้ CHAPTER_PROMPT เพื่อให้ทุกบทถูกเขียนใหม่ด้วยคำสั่งใหม่
-export const CHAPTER_PROMPT_VERSION = 3;
+export const CHAPTER_PROMPT_VERSION = 4;
 
 const CHAPTER_PROMPT = `คุณกำลังเขียนบทหนึ่งในหนังสือความรู้ของทีม ให้คนที่เพิ่งเข้ามาใหม่อ่านแล้วเข้าใจและทำงานต่อได้ทันที
 
@@ -201,11 +274,11 @@ const CHAPTER_PROMPT = `คุณกำลังเขียนบทหนึ�
   - body แบ่งย่อหน้าด้วยบรรทัดว่าง รายการต้องขึ้นบรรทัดใหม่ทีละข้อ นำหน้าด้วย "- "
   - ทุกครั้งที่พูดถึงกฎ ให้อ้างเลขข้อในวงเล็บ เช่น (ข้อ #12)
   - ถ้ามีเหตุผลในกฎ ให้เล่าเหตุผลด้วย เพราะช่วยให้คนอ่านจำและตัดสินใจเองได้
-- gaps: ไม่เกิน 3 ข้อ เฉพาะช่องโหว่ที่เกิดจากเงื่อนไขในกฎเอง เช่น ตัวเลขที่อยู่ตรงรอยต่อพอดี (ออเดอร์ 500 กิโลพอดีใช้เครื่องไหน) หรือกรณีที่กฎพูดถึงแต่ไม่ได้บอกว่าต้องทำอะไร ห้ามใส่เรื่องทั่วไปอย่างความปลอดภัย การสอบเทียบ การแก้ปัญหา ถ้าไม่มีให้เป็น []
 - ห้ามเพิ่มข้อมูล คำแนะนำ หรือคำเน้นที่ไม่มีอยู่ในกฎ เช่น "ไม่ว่าด้วยเหตุผลใด" "ควรคอยตรวจเช็ก" ถ้ากฎไม่ได้พูดไว้ คนอ่านจะเข้าใจผิดว่าเป็นกฎจริง
+- ไม่ต้องเขียนถึงสิ่งที่กฎยังไม่ครอบคลุม ระบบมีที่เก็บคำถามที่ถามผู้สอนค้างไว้อยู่แล้ว และจะแสดงต่อท้ายบทให้เอง
 
 ตอบเป็น JSON เท่านั้น ในรูปแบบนี้
-{"overview":"","sections":[{"heading":"","body":""}],"gaps":[""]}`;
+{"overview":"","sections":[{"heading":"","body":""}]}`;
 
 export async function writeChapter(topic, rules) {
   const system = fill(CHAPTER_PROMPT, { TOPIC: topic, RULES: formatRules(rules) });
@@ -216,6 +289,5 @@ export async function writeChapter(topic, rules) {
     sections: list(raw.sections)
       .map((s) => ({ heading: text(s?.heading, 200), body: text(s?.body, 10_000) }))
       .filter((s) => s.body),
-    gaps: list(raw.gaps).map((g) => text(g, 500)).filter(Boolean),
   };
 }

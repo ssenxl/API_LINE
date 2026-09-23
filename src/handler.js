@@ -1,6 +1,15 @@
 import { transcribe } from './ai.js';
-import { analyzeMessage, resolveConflict } from './brain.js';
-import { bookCard, bookLink, cardText, conflictCard, quickReply, ruleCards } from './cards.js';
+import { analyzeMessage, findGaps, resolveConflict } from './brain.js';
+import {
+  bookCard,
+  bookLink,
+  cardText,
+  conflictCard,
+  questionCard,
+  questionText,
+  quickReply,
+  ruleCards,
+} from './cards.js';
 import { config } from './config.js';
 import * as kb from './knowledge.js';
 import { deliver, getMessageContent, getProfile, showLoading } from './line.js';
@@ -9,6 +18,9 @@ const RESET_KEYWORDS = ['เริ่มใหม่', 'ล้างประว
 const MY_ID_KEYWORDS = ['ไอดีของฉัน', 'ไอดี', 'myid'];
 const BOOK_KEYWORDS = ['หนังสือ', 'ขอหนังสือ', 'book'];
 const CANCEL_KEYWORDS = ['ยกเลิก', 'cancel'];
+const SKIP_KEYWORDS = ['ข้าม', 'ยังไม่ทราบ', 'ไม่ทราบ', 'ไม่รู้', 'skip'];
+const PENDING_KEYWORDS = ['คำถามค้าง', 'ถามต่อ', 'มีอะไรค้าง'];
+const SWEEP_KEYWORDS = ['ตรวจกฎ', 'หาช่องโหว่'];
 
 const UNSUPPORTED_REPLY = 'ตอนนี้ผมรับได้เฉพาะข้อความตัวอักษรกับข้อความเสียงครับ';
 const VOICE_UNCLEAR_REPLY = 'ขออภัยครับ ฟังเสียงไม่ออก รบกวนพูดใหม่ชัด ๆ อีกครั้ง หรือพิมพ์มาแทนได้เลย';
@@ -18,14 +30,17 @@ const NOT_TEACHER_REPLY =
   'ถ้าต้องการสอน ให้พิมพ์ "ไอดีของฉัน" แล้วส่งรหัสที่ได้ให้ผู้ดูแลเพิ่มสิทธิ์ให้';
 const PENDING_NOTE =
   'ยังมีเรื่องที่ผมถามค้างไว้อยู่นะครับ ตอบเมื่อไหร่ก็ได้ หรือพิมพ์ "ยกเลิก" ถ้าไม่ต้องบันทึกเรื่องนั้น';
+const NO_PENDING_REPLY = 'ตอนนี้ไม่มีคำถามค้างครับ เล่ากฎหรือวิธีทำงานเพิ่มได้เลย';
 const WELCOME =
   'สวัสดีครับ ผมเป็นผู้ช่วยจดความรู้ของทีม\n\n' +
   '• เล่ากฎหรือวิธีทำงานให้ฟังได้เลย ผมจะสรุปเก็บไว้ ถ้าขัดกับของเดิมจะถามกลับก่อนบันทึก\n' +
+  '• บันทึกแล้วผมจะอ่านกฎทั้งบทอีกรอบ ถ้ายังมีมุมไหนไม่ชัดจะถามกลับ และถามซ้ำจนกว่าจะได้คำตอบ\n' +
   '• ถามเรื่องที่เคยมีคนสอนไว้ได้\n' +
   '• กดปุ่มด้านล่าง หรือพิมพ์คำสั่งก็ได้เหมือนกันครับ';
 
 const MENU = quickReply(
   { label: '📖 หนังสือ', text: 'หนังสือ' },
+  { label: '❓ คำถามค้าง', text: 'คำถามค้าง' },
   { label: '🆔 ไอดีของฉัน', text: 'ไอดีของฉัน' },
   { label: '🔄 เริ่มใหม่', text: 'เริ่มใหม่' },
 );
@@ -81,10 +96,10 @@ const toCard = (rule, kind) => ({
  * ข้อความธรรมดาใช้สองที่ คือเก็บลงประวัติแชทให้ AI เห็นในรอบถัดไป
  * และเป็นตัวสำรองถ้า LINE ปฏิเสธการ์ด
  *
- * ส่งได้ไม่เกิน 5 ข้อความต่อครั้ง ที่นี่จึงรวมให้เหลืออย่างมาก 3 ก้อน
- * คือข้อความนำ การ์ด และหมายเหตุท้าย
+ * ส่งได้ไม่เกิน 5 ข้อความต่อครั้ง ที่นี่จึงรวมให้เหลืออย่างมาก 4 ก้อน
+ * คือข้อความนำ การ์ด หมายเหตุท้าย และการ์ดคำถามที่ค้างอยู่
  */
-function render({ lead, cards = [], conflict = null, notes = [] }) {
+function render({ lead, cards = [], conflict = null, notes = [], questions = [] }) {
   const messages = [];
   const lines = [];
   const add = (message, text) => {
@@ -102,6 +117,9 @@ function render({ lead, cards = [], conflict = null, notes = [] }) {
     const text = notes.join('\n\n');
     add({ type: 'text', text }, text);
   }
+
+  // ถามท้ายสุด ผู้ใช้จะได้เห็นว่าบันทึกอะไรไปแล้วก่อนตอบคำถามถัดไป
+  if (questions.length > 0) add(questionCard(questions), questionText(questions));
 
   return { messages, text: lines.join('\n\n') };
 }
@@ -155,6 +173,10 @@ export async function handleEvent(event) {
         text: `อ่านหนังสือความรู้ของทีมได้ที่\n${bookLink()}`,
         messages: card ? [card] : null,
       });
+      return;
+    }
+    if (PENDING_KEYWORDS.includes(command)) {
+      await askPending({ userId, replyToken });
       return;
     }
   }
@@ -218,15 +240,31 @@ async function respond({ userId, replyToken, message }) {
   }
 
   const command = text.toLowerCase();
+  const isTeacher = config.teachers.has(userId);
+
   if (RESET_KEYWORDS.includes(command)) {
     await kb.resetContext(userId);
     await deliver({ replyToken, userId, text: 'เริ่มคุยเรื่องใหม่ได้เลยครับ (ความรู้ที่บันทึกไว้ยังอยู่ครบ)' });
     return;
   }
+  // กวาดตรวจกฎทั้งเล่มรวดเดียว ใช้ตอนเพิ่งเริ่มใช้ฟีเจอร์นี้ หรืออยากเก็บตกให้ครบ
+  if (isTeacher && SWEEP_KEYWORDS.includes(command)) {
+    await sweep({ userId, replyToken });
+    return;
+  }
+  // ข้ามเฉพาะคำถามชุดที่เพิ่งถามไป ตัดจบตรงนี้เลยไม่ต้องเสียค่า AI
+  if (isTeacher && SKIP_KEYWORDS.includes(command)) {
+    const skipped = await kb.skipLastAsked(userId, config.questions.askAtOnce);
+    if (skipped > 0) {
+      const reply = 'ได้ครับ ข้ามไปก่อน ถ้านึกออกเมื่อไหร่บอกผมได้ตลอด';
+      await kb.saveMessage(userId, 'assistant', reply);
+      await deliver({ replyToken, userId, text: reply });
+      return;
+    }
+  }
 
   // บอก AI ว่าข้อความนี้ถอดจากเสียง จะได้ไม่ยึดคำที่ฟังเพี้ยนเป็นข้อเท็จจริง
   if (heard) text = `[ข้อความนี้ถอดจากเสียงพูด อาจมีคำที่ฟังผิด ถ้าตัวเลขหรือชื่อดูแปลกให้ถามยืนยัน]\n${text}`;
-  const isTeacher = config.teachers.has(userId);
 
   let result = null;
   const conflict = isTeacher ? await kb.getOpenConflict(userId) : null;
@@ -234,11 +272,15 @@ async function respond({ userId, replyToken, message }) {
     result = await answerConflict({ conflict, userId, messageId, text, command, history });
   }
   if (result === null) {
-    result = await handleMessage({ userId, messageId, text, history, isTeacher });
+    const pending = isTeacher ? await kb.listOpenQuestions(userId) : [];
+    result = await handleMessage({ userId, messageId, text, history, isTeacher, pending });
     // ตอบเรื่องอื่นไปแล้ว แต่ยังต้องเตือนว่าคำถามเดิมยังค้างอยู่
     if (conflict) result.notes = [...(result.notes ?? []), PENDING_NOTE];
   }
 
+  if (isTeacher) {
+    result.questions = await pickQuestions({ userId, result, hadConflict: Boolean(conflict) });
+  }
   if (heard) result.lead = result.lead ? `${heard}\n\n${result.lead}` : heard;
 
   const { messages, text: transcript } = render(result);
@@ -247,9 +289,22 @@ async function respond({ userId, replyToken, message }) {
 }
 
 /** ข้อความทั่วไป: สอน ถาม หรือคุยเล่น */
-async function handleMessage({ userId, messageId, text, history, isTeacher }) {
+async function handleMessage({ userId, messageId, text, history, isTeacher, pending }) {
   const rules = await kb.listActiveRules();
-  const result = await analyzeMessage({ text, history, rules });
+  const result = await analyzeMessage({ text, history, rules, pending });
+
+  // ปิดคำถามที่ผู้ใช้เพิ่งตอบก่อนบันทึก จะได้ไม่ถูกหยิบมาถามซ้ำในรอบเดียวกัน
+  const open = new Set(pending.map((q) => q.id));
+  await kb.closeQuestions({
+    ids: result.answered.filter((id) => open.has(id)),
+    status: 'answered',
+    answerMessageId: messageId,
+  });
+  await kb.closeQuestions({
+    ids: result.skipped.filter((id) => open.has(id)),
+    status: 'skipped',
+    answerMessageId: messageId,
+  });
 
   if (result.intent === 'teach' || result.intent === 'clarify') {
     if (!isTeacher) {
@@ -297,15 +352,102 @@ async function handleMessage({ userId, messageId, text, history, isTeacher }) {
     const refs = duplicateIds.map((id) => `ข้อ #${id}`).join(', ');
     notes.push(`เรื่องนี้มีบันทึกไว้แล้วใน ${refs} ผมแนบคำพูดของคุณไว้เป็นหลักฐานเพิ่มแล้วครับ`);
   }
-  // ถามต่อเฉพาะเมื่อบันทึกอะไรใหม่จริง คำตอบรอบหน้าจะกลายเป็นการเพิ่มรายละเอียดให้กฎข้อนี้
-  if (saved.length > 0 && result.followUp.length > 0) {
-    const questions = result.followUp.map((q, i) => `${i + 1}. ${q}`).join('\n');
-    notes.push(
-      `❓ ขอถามเพิ่มอีกนิด ให้กฎข้อนี้ครบขึ้นครับ\n\n${questions}\n\nไม่ทราบหรือไม่อยากตอบ ข้ามได้เลยครับ`,
-    );
-  }
+  await collectQuestions(userId, saved);
 
   return { lead: result.reply, cards: saved.map((r) => toCard(r)), notes };
+}
+
+/**
+ * หลังบันทึกเสร็จ ให้ AI อ่านกฎ "ทั้งบท" อีกรอบว่ายังขาดมุมไหน แล้วเก็บไว้เป็นคำถามค้าง
+ * มองทั้งบทไม่ใช่แค่ข้อความที่เพิ่งสอน เพราะช่องโหว่มักเกิดตรงรอยต่อระหว่างกฎหลายข้อ
+ *
+ * ที่นี่แค่เก็บคำถามลงคิว คนหยิบไปถามคือ pickQuestions จะได้รวมกับคำถามเก่าที่ยังค้างอยู่
+ * ถ้าขั้นตอนนี้ล้มเหลวต้องไม่กระทบการบันทึก สิ่งที่ผู้ใช้สอนมาสำคัญกว่าคำถามต่อ
+ */
+async function collectQuestions(userId, saved) {
+  const topics = [...new Set(saved.map((r) => r.topic))];
+  if (topics.length === 0) return 0;
+
+  // ถ้ายังมีคำถามค้างคออยู่เยอะ ไม่ต้องเสียค่า AI หาเพิ่ม เคลียร์ของเดิมให้หมดก่อน
+  if ((await kb.countOpenQuestions(userId)) >= config.questions.maxOpen) return 0;
+
+  const rules = await kb.listActiveRules();
+  const found = await Promise.all(
+    topics.map(async (topic) => {
+      try {
+        const questions = await findGaps({
+          topic,
+          rules: rules.filter((r) => r.topic === topic),
+          newRules: saved.filter((r) => r.topic === topic),
+          asked: await kb.askedQuestions(topic),
+        });
+        await kb.createQuestions({ userId, topic, questions });
+        return questions.length;
+      } catch (err) {
+        console.error(`[handler] หาช่องโหว่ของบท "${topic}" ไม่สำเร็จ:`, err.message);
+        return 0;
+      }
+    }),
+  );
+  return found.reduce((sum, n) => sum + n, 0);
+}
+
+/**
+ * หยิบคำถามที่ถึงเวลาถามมาต่อท้ายคำตอบ แล้วจดว่าถามไปเมื่อไหร่
+ * ไม่ถามซ้อนตอนที่ยังมีเรื่องขัดแย้งรอคำตอบอยู่ เพราะเรื่องนั้นยังไม่ได้บันทึกและสำคัญกว่า
+ */
+async function pickQuestions({ userId, result, hadConflict }) {
+  if (result.conflict) return [];
+  if (hadConflict && (await kb.getOpenConflict(userId))) return [];
+
+  const { askAtOnce, remindMinutes } = config.questions;
+  // ถ้าเพิ่งบันทึกอะไรไป ให้หยิบคำถามในบทเดียวกันมาถามก่อน จะได้คุยต่อเนื่องเรื่องเดียวกัน
+  const topic = result.cards?.at(-1)?.topic ?? null;
+  const questions = await kb.dueQuestions(userId, askAtOnce, remindMinutes, topic);
+  await kb.markAsked(questions.map((q) => q.id));
+  return questions;
+}
+
+/**
+ * อ่านกฎทุกบทในเล่มรวดเดียวเพื่อหาช่องโหว่ที่ยังไม่เคยถาม แล้วเริ่มถามเลย
+ * ใช้เก็บตกกฎที่บันทึกไว้ก่อนหน้านี้ ซึ่งยังไม่เคยผ่านการตรวจหลังบันทึก
+ */
+async function sweep({ userId, replyToken }) {
+  // มีคำถามค้างอยู่แล้วก็ไม่ต้องจ่ายค่า AI ตรวจซ้ำ ยกของเดิมมาถามต่อเลย
+  const backlog = await kb.countOpenQuestions(userId);
+  let lead = `ยังมีคำถามค้างอยู่ ${backlog} ข้อ ขอเคลียร์ชุดนี้ก่อน แล้วค่อยตรวจเพิ่มให้ครับ`;
+
+  if (backlog < config.questions.maxOpen) {
+    const found = await collectQuestions(userId, await kb.listActiveRules());
+    lead =
+      found > 0
+        ? `ตรวจกฎทั้งเล่มแล้วครับ เจอเรื่องที่ยังไม่ชัดเพิ่ม ${found} เรื่อง ขอถามทีละนิดนะครับ`
+        : 'ตรวจกฎทั้งเล่มแล้วครับ ไม่เจอช่องโหว่ใหม่ที่ยังไม่เคยถาม';
+  }
+
+  const questions = await kb.dueQuestions(userId, config.questions.askAtOnce, 0);
+  await kb.markAsked(questions.map((q) => q.id));
+
+  const { messages, text } = render({ lead, questions });
+  await kb.saveMessage(userId, 'assistant', text);
+  await deliver({ replyToken, userId, text, messages });
+}
+
+/** ผู้ใช้ขอดูคำถามที่ค้างเอง ถามได้ทันทีไม่ต้องรอครบเวลาทวง */
+async function askPending({ userId, replyToken }) {
+  const questions = config.teachers.has(userId)
+    ? await kb.dueQuestions(userId, config.questions.askAtOnce, 0)
+    : [];
+
+  if (questions.length === 0) {
+    await deliver({ replyToken, userId, text: NO_PENDING_REPLY, quickReply: MENU });
+    return;
+  }
+
+  await kb.markAsked(questions.map((q) => q.id));
+  const text = questionText(questions);
+  await kb.saveMessage(userId, 'assistant', text);
+  await deliver({ replyToken, userId, text, messages: [questionCard(questions)] });
 }
 
 /**
@@ -356,6 +498,8 @@ async function answerConflict({ conflict, userId, messageId, text, command, hist
     addRules: result.addRules,
     decision: result.decision || result.reply,
   });
+
+  await collectQuestions(userId, added);
 
   // กฎที่เลิกใช้ต้องหยิบเนื้อหามาจากฉบับเดิมที่ดึงไว้ก่อนหน้า saveResolution คืนมาแค่ id
   const byId = new Map(oldRules.map((r) => [r.id, r]));

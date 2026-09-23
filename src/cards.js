@@ -189,6 +189,66 @@ export function conflictCard(question) {
   );
 }
 
+// ---------- การ์ดถามเรื่องที่ยังไม่ชัด ----------
+
+/** ข้อความธรรมดาที่สื่อความหมายเดียวกับการ์ดคำถาม */
+export function questionText(questions) {
+  const lines = questions.map((q, i) => `${questions.length > 1 ? `${i + 1}. ` : ''}${q.question}`);
+  return (
+    `❓ ขอถามเพิ่มอีกนิด ให้กฎครบขึ้นครับ\n\n${lines.join('\n')}\n\n` +
+    'ตอบกลับมาได้เลย ถ้ายังไม่ทราบให้พิมพ์ "ข้าม" ครับ'
+  );
+}
+
+export function questionCard(questions) {
+  const refs = [...new Set(questions.flatMap((q) => q.rule_ids ?? []))];
+  const lines = [];
+  questions.forEach((q, i) => {
+    if (i > 0) lines.push({ type: 'separator', margin: 'lg', color: C.line });
+    lines.push({
+      type: 'text',
+      text: q.question,
+      size: 'sm',
+      color: C.ink,
+      wrap: true,
+      margin: i > 0 ? 'lg' : 'none',
+    });
+  });
+  lines.push(
+    { type: 'separator', margin: 'lg', color: C.line },
+    {
+      type: 'text',
+      text: 'ตอบกลับมาได้เลยครับ ผมจะเอาไปรวมกับกฎข้อเดิมให้ ถ้ายังไม่ได้คำตอบผมจะถามซ้ำภายหลัง',
+      size: 'xxs',
+      color: C.muted,
+      wrap: true,
+      margin: 'lg',
+    },
+  );
+
+  return flex(questionText(questions), {
+    type: 'bubble',
+    size: 'mega',
+    header: header('ขอถามเพิ่ม', refs.length === 1 ? `ข้อ #${refs[0]}` : null, C.warn),
+    body: body(lines),
+    footer: {
+      type: 'box',
+      layout: 'vertical',
+      backgroundColor: C.paper,
+      paddingAll: '4px',
+      contents: [
+        {
+          type: 'button',
+          style: 'link',
+          height: 'sm',
+          color: C.muted,
+          action: { type: 'message', label: 'ยังไม่ทราบ ขอข้าม', text: 'ข้าม' },
+        },
+      ],
+    },
+  });
+}
+
 // ---------- การ์ดลิงก์หนังสือ ----------
 
 export function bookCard() {

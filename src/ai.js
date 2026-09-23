@@ -31,6 +31,12 @@ export async function askJSON(system, messages) {
     messages: [{ role: 'system', content: system }, ...messages],
   });
 
+  // log ไว้ดูค่าใช้จ่ายใน Render → Logs ว่าแต่ละรอบกิน token ไปเท่าไหร่
+  const used = completion.usage;
+  if (used) {
+    console.log(`[ai] token: เข้า ${used.prompt_tokens} + ออก ${used.completion_tokens}`);
+  }
+
   const choice = completion.choices[0];
   const text = choice?.message?.content?.trim();
   if (!text) {

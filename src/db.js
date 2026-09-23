@@ -108,6 +108,25 @@ export async function migrate() {
     );
     CREATE INDEX IF NOT EXISTS conflicts_open ON conflicts (user_id) WHERE status = 'open';
 
+    -- ช่องโหว่ที่บอทวิเคราะห์เจอจากกฎที่มีอยู่ ถามผู้สอนกลับไปแล้วรอคำตอบ
+    -- เก็บลงตารางเพราะถ้าผู้สอนยังไม่ตอบ ต้องทวงซ้ำได้ ไม่ใช่ถามครั้งเดียวแล้วหายไป
+    CREATE TABLE IF NOT EXISTS questions (
+      id                SERIAL PRIMARY KEY,
+      user_id           TEXT   NOT NULL,
+      topic             TEXT   NOT NULL,
+      rule_ids          INT[]  NOT NULL DEFAULT '{}',
+      question          TEXT   NOT NULL,
+      status            TEXT   NOT NULL DEFAULT 'open'
+                        CHECK (status IN ('open', 'answered', 'skipped')),
+      answer_message_id BIGINT REFERENCES messages (id),
+      asked_at          TIMESTAMPTZ,
+      asked_count       INT    NOT NULL DEFAULT 0,
+      created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+      resolved_at       TIMESTAMPTZ
+    );
+    CREATE INDEX IF NOT EXISTS questions_open ON questions (user_id) WHERE status = 'open';
+    CREATE INDEX IF NOT EXISTS questions_topic ON questions (topic);
+
     -- ประวัติการเปลี่ยนกฎ: กฎเก่าชุดไหนถูกแทนด้วยกฎใหม่ชุดไหน เพราะอะไร
     CREATE TABLE IF NOT EXISTS rule_changes (
       id           SERIAL PRIMARY KEY,

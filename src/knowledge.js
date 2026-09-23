@@ -229,11 +229,105 @@ export async function saveResolution({ conflict, userId, answerMessageId, retire
   });
 }
 
+// ---------- คำถามที่ยังไม่ได้คำตอบ ----------
+
+/**
+ * คำถามที่ค้างอยู่ของผู้ใช้คนนี้ ส่งให้ AI เป็น context ทุกรอบ
+ * เพื่อให้อ่านข้อความสั้น ๆ อย่าง "เฉพาะกลางคืน" ออกว่าเป็นคำตอบของคำถามไหน
+ */
+export async function listOpenQuestions(userId, limit = 10) {
+  const { rows } = await query(
+    `SELECT id, topic, rule_ids, question FROM questions
+     WHERE user_id = $1 AND status = 'open' ORDER BY id LIMIT $2`,
+    [userId, limit],
+  );
+  return rows;
+}
+
+/**
+ * คำถามที่ถึงเวลาถาม คือยังไม่เคยถาม หรือถามไปแล้วนานพอจะทวงซ้ำได้
+ * เรื่องในบทที่เพิ่งคุยกันมาก่อน (topic) เพราะผู้สอนกำลังนึกเรื่องนั้นอยู่พอดี
+ * ที่เหลือเอาข้อเก่าสุดก่อน เรื่องที่ค้างมานานจะได้ไม่ถูกดองไว้ท้ายคิวตลอด
+ */
+export async function dueQuestions(userId, limit, remindMinutes, topic = null) {
+  const { rows } = await query(
+    `SELECT id, topic, rule_ids, question FROM questions
+     WHERE user_id = $1 AND status = 'open'
+       AND (asked_at IS NULL OR asked_at < now() - make_interval(mins => $2))
+     ORDER BY (topic = $4::text) DESC NULLS LAST, id
+     LIMIT $3`,
+    [userId, remindMinutes, limit, topic],
+  );
+  return rows;
+}
+
+export async function createQuestions({ userId, topic, questions }) {
+  for (const q of questions) {
+    await query(
+      'INSERT INTO questions (user_id, topic, rule_ids, question) VALUES ($1, $2, $3, $4)',
+      [userId, topic, q.rule_ids, q.question],
+    );
+  }
+}
+
+export async function markAsked(ids) {
+  if (ids.length === 0) return;
+  await query(
+    'UPDATE questions SET asked_at = now(), asked_count = asked_count + 1 WHERE id = ANY($1)',
+    [ids],
+  );
+}
+
+export async function closeQuestions({ ids, status, answerMessageId = null }) {
+  if (ids.length === 0) return;
+  await query(
+    `UPDATE questions SET status = $2, answer_message_id = $3, resolved_at = now()
+     WHERE id = ANY($1) AND status = 'open'`,
+    [ids, status, answerMessageId],
+  );
+}
+
+/** ผู้ใช้พิมพ์ "ข้าม" หมายถึงข้ามคำถามชุดที่เพิ่งถามไป ไม่ใช่ล้างคิวทั้งหมด */
+export async function skipLastAsked(userId, limit) {
+  const { rows } = await query(
+    `UPDATE questions SET status = 'skipped', resolved_at = now()
+     WHERE id IN (
+       SELECT id FROM questions
+       WHERE user_id = $1 AND status = 'open' AND asked_at IS NOT NULL
+       ORDER BY asked_at DESC, id DESC LIMIT $2
+     )
+     RETURNING id`,
+    [userId, limit],
+  );
+  return rows.length;
+}
+
+/**
+ * คำถามที่เคยถามในบทนี้ ไม่ว่าใครถูกถามหรือตอบแล้วหรือยัง ใช้กันถามซ้ำ
+ * เอาแค่ชุดหลัง ๆ เพราะรายการนี้ถูกส่งเข้า prompt ทุกครั้ง ถ้าปล่อยให้ยาวไปเรื่อย ๆ จะเปลือง token ฟรี ๆ
+ */
+export async function askedQuestions(topic, limit = 30) {
+  const { rows } = await query(
+    'SELECT question FROM questions WHERE topic = $1 ORDER BY id DESC LIMIT $2',
+    [topic, limit],
+  );
+  return rows.reverse();
+}
+
+/** คำถามที่ยังค้างคอผู้ใช้คนนี้อยู่กี่ข้อ ใช้ตัดสินว่าควรหาเพิ่มอีกไหม */
+export async function countOpenQuestions(userId) {
+  const { rows } = await query(
+    `SELECT count(*)::int AS n FROM questions WHERE user_id = $1 AND status = 'open'`,
+    [userId],
+  );
+  return rows[0].n;
+}
+
 // ---------- หนังสือ ----------
 
 /** ดึงทุกอย่างที่หนังสือต้องใช้ในครั้งเดียว */
 export async function loadBook() {
-  const [rules, sources, changes, conflicts, chapters] = await Promise.all([
+  const [rules, sources, changes, conflicts, questions, chapters] = await Promise.all([
     query(
       `SELECT r.*, COALESCE(u.display_name, '${UNKNOWN_NAME}') AS author
        FROM rules r LEFT JOIN users u ON u.user_id = r.created_by
@@ -262,6 +356,13 @@ export async function loadBook() {
        LEFT JOIN users u ON u.user_id = c.user_id
        ORDER BY c.id`,
     ),
+    query(
+      `SELECT q.topic, q.rule_ids, q.question, q.asked_at,
+              COALESCE(u.display_name, '${UNKNOWN_NAME}') AS author
+       FROM questions q LEFT JOIN users u ON u.user_id = q.user_id
+       WHERE q.status = 'open'
+       ORDER BY q.id`,
+    ),
     query('SELECT topic, source_hash, content FROM chapters'),
   ]);
 
@@ -270,6 +371,7 @@ export async function loadBook() {
     sources: sources.rows,
     changes: changes.rows,
     conflicts: conflicts.rows,
+    questions: questions.rows,
     chapters: new Map(chapters.rows.map((c) => [c.topic, c])),
   };
 }

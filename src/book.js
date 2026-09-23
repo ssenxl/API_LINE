@@ -224,27 +224,41 @@ function ruleCard(rule, data) {
   </article>`;
 }
 
+/**
+ * ช่องโหว่ของบทนี้ มาจากคำถามที่บอทถามผู้สอนใน LINE ไปแล้วและยังไม่ได้คำตอบ
+ * ไม่ได้ให้ AI คิดขึ้นตอนเขียนหนังสือ เพราะที่เขียนไว้ในเล่มต้องเป็นเรื่องที่มีคนถูกถามจริง
+ */
+function gapsAside(questions) {
+  if (questions.length === 0) return '';
+
+  const items = questions.map((q) => {
+    const refs = (q.rule_ids ?? []).map((id) => `#${id}`).join(' ');
+    const tail = refs && !q.question.includes('#') ? ` (ข้อ ${refs})` : '';
+    const asked = q.asked_at ? ` — ถาม ${escape(q.author)} เมื่อ ${date(q.asked_at)}` : '';
+    return `<li>${linkRules(escape(q.question) + tail)}<span class="meta">${asked}</span></li>`;
+  });
+
+  return `<aside class="gaps">
+    <h3>สิ่งที่ยังไม่ชัด หรือยังไม่มีใครสอน</h3>
+    <p class="meta">บอทถามผู้สอนใน LINE ไปแล้ว ยังรอคำตอบอยู่ ตอบในแชทเมื่อไหร่ บทนี้จะอัปเดตตาม</p>
+    <ul>${items.join('')}</ul>
+  </aside>`;
+}
+
 function chapterSection(chapter, index, data) {
   const { content } = chapter;
   const body = content
     ? `${content.overview ? `<div class="overview">${prose(content.overview)}</div>` : ''}
        ${content.sections
          .map((s) => `${s.heading ? `<h3>${escape(s.heading)}</h3>` : ''}${prose(s.body)}`)
-         .join('')}
-       ${
-         content.gaps.length
-           ? `<aside class="gaps">
-               <h3>สิ่งที่ยังไม่ชัด หรือยังไม่มีใครสอน</h3>
-               <ul>${content.gaps.map((g) => `<li>${linkRules(escape(g))}</li>`).join('')}</ul>
-             </aside>`
-           : ''
-       }`
+         .join('')}`
     : `<p class="note">ยังเรียบเรียงบทนี้ไม่สำเร็จ ลองเปิดหน้านี้ใหม่อีกครั้ง ระหว่างนี้อ่านจากรายการกฎด้านล่างได้</p>`;
 
   return `<section class="chapter" id="ch-${index + 1}">
     <p class="eyebrow">บทที่ ${index + 1}</p>
     <h2>${escape(chapter.topic)}</h2>
     ${body}
+    ${gapsAside(data.questions.filter((q) => q.topic === chapter.topic))}
     <h3 class="rules-heading">กฎในบทนี้ (${chapter.rules.length} ข้อ)</h3>
     ${chapter.rules.map((r) => ruleCard(r, data)).join('')}
   </section>`;
@@ -349,6 +363,7 @@ function page(data, chapters) {
       <li>แต่ละบทเริ่มด้วยคำอธิบายที่ AI เรียบเรียงจากกฎทั้งหมดในบทนั้น ให้อ่านเข้าใจภาพรวมก่อน</li>
       <li>ท้ายบทคือรายการกฎทีละข้อ ตัวเลข <a class="ref" href="#">#12</a> กดเพื่อไปดูข้อนั้นได้</li>
       <li>กด "คำพูดต้นฉบับ" เพื่ออ่านสิ่งที่ผู้สอนพิมพ์มาจริง ๆ ถ้าคำสรุปของ AI กับต้นฉบับไม่ตรงกัน ให้ถือต้นฉบับเป็นหลัก</li>
+      <li>กล่องสีเหลืองท้ายบทคือช่องโหว่ที่บอทถามผู้สอนใน LINE ไปแล้วและยังไม่ได้คำตอบ ใครรู้คำตอบช่วยตอบในแชทได้เลย</li>
       <li>เรื่องที่เคยขัดแย้งกันและเหตุผลที่ตัดสิน อยู่ในภาคผนวกท้ายเล่ม</li>
     </ul>
   </aside>
@@ -450,6 +465,8 @@ a { color: var(--accent); }
 .gaps { background: var(--warn-soft); border-color: transparent; margin-top: 24px; }
 .gaps h3 { margin-top: 0; color: var(--warn); }
 .gaps ul { margin: 0; padding-left: 20px; }
+.gaps li { margin-bottom: 6px; }
+.gaps .meta { font-size: .82rem; }
 .rules-heading { color: var(--muted); font-size: 1rem; margin-top: 36px; }
 .rule, .conflict {
   background: var(--paper); border: 1px solid var(--line); border-radius: 12px;
