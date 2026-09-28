@@ -1,10 +1,12 @@
 import crypto from 'node:crypto';
 import express from 'express';
-import { audioSignature, renderBook } from './book.js';
+import { adminRouter } from './admin.js';
+import { sendAudio } from './audio.js';
+import { audioSignature, bookSettings, renderBook } from './book.js';
 import { config } from './config.js';
 import { migrate } from './db.js';
 import { handleEvent } from './handler.js';
-import { getAudio } from './knowledge.js';
+import { getSetting } from './knowledge.js';
 import { startKeepAlive } from './keepalive.js';
 import { verifySignature } from './line.js';
 
@@ -75,37 +77,14 @@ app.get('/audio/:id', async (req, res) => {
     return res.status(404).end();
   }
 
+  // ผู้ดูแลปิดปุ่มฟังเสียงในหนังสือแล้ว ลิงก์เก่าที่เคยแจกไปก็ต้องฟังไม่ได้ด้วย
   try {
-    const audio = await getAudio(id);
-    if (!audio) return res.status(404).end();
-
-    const data = audio.data;
-    res.set({
-      'Content-Type': audio.mime,
-      'Accept-Ranges': 'bytes',
-      'Cache-Control': 'private, max-age=86400',
-    });
-
-    // Safari บน iPhone ขอไฟล์เสียงเป็นช่วง ๆ (Range) ถ้าตอบทั้งไฟล์ไปมันจะไม่ยอมเล่น
-    const range = /^bytes=(\d*)-(\d*)$/.exec(req.get('range') ?? '');
-    if (range) {
-      let start = range[1] === '' ? data.length - Number(range[2]) : Number(range[1]);
-      let end = range[1] !== '' && range[2] !== '' ? Number(range[2]) : data.length - 1;
-      start = Math.max(0, start);
-      end = Math.min(end, data.length - 1);
-      if (start > end) {
-        return res.status(416).set('Content-Range', `bytes */${data.length}`).end();
-      }
-      return res
-        .status(206)
-        .set('Content-Range', `bytes ${start}-${end}/${data.length}`)
-        .send(data.subarray(start, end + 1));
-    }
-    res.send(data);
+    if (!bookSettings(await getSetting('book')).sections.audio) return res.status(404).end();
   } catch (err) {
-    console.error('[server] ส่งไฟล์เสียงไม่สำเร็จ:', err);
-    res.status(500).end();
+    console.error('[server] อ่านค่าหนังสือไม่สำเร็จ:', err);
+    return res.status(500).end();
   }
+  sendAudio(req, res, id);
 });
 
 // หน้าแรกเปิดหนังสือสรุปเลย ใครรู้โดเมนก็อ่านได้โดยไม่ต้องมี key
@@ -115,6 +94,11 @@ app.get('/', (_req, res) => sendBook(res));
 // ใครรู้ชื่อก็เปิดได้ ถ้าหลุดไปถึงคนที่ไม่ควรเห็น ให้เปลี่ยน BOOK_SLUG
 if (config.book.slug) {
   app.get(`/${config.book.slug}`, (_req, res) => sendBook(res));
+}
+
+// หน้าผู้ดูแลเปิดเฉพาะเมื่อตั้งรหัสไว้ ไม่ตั้ง = ไม่มีหน้านี้เลย กันลืมตั้งแล้วเปิดโล่ง
+if (config.admin.key) {
+  app.use('/admin', adminRouter);
 }
 
 try {
@@ -128,6 +112,9 @@ app.listen(config.port, () => {
   console.log(`[server] ฟังอยู่ที่พอร์ต ${config.port}`);
   console.log(`[server] webhook: POST /webhook · หนังสือ: GET /book`);
   console.log(`[server] โมเดล AI: ${config.ai.model}`);
+  if (!config.admin.key) {
+    console.log('[server] ยังไม่ได้ตั้ง ADMIN_KEY หน้าผู้ดูแล /admin จึงปิดอยู่');
+  }
   if (config.teachers.size === 0) {
     console.warn('[server] ยังไม่ได้ตั้ง TEACHER_USER_IDS ตอนนี้จึงไม่มีใครสอนบอทได้');
   } else {

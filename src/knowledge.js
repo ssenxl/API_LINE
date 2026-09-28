@@ -192,13 +192,15 @@ export async function createConflict({ userId, messageId, proposed, ruleIds, exp
   return rows[0].id;
 }
 
+/** คืนจำนวนที่ยกเลิกได้จริง เป็น 0 ถ้าเรื่องนั้นถูกตัดสินหรือยกเลิกไปก่อนแล้ว */
 export async function cancelConflict({ conflictId, answerMessageId, decision }) {
-  await query(
+  const { rowCount } = await query(
     `UPDATE conflicts
      SET status = 'cancelled', decision = $2, answer_message_id = $3, resolved_at = now()
-     WHERE id = $1`,
+     WHERE id = $1 AND status = 'open'`,
     [conflictId, decision, answerMessageId],
   );
+  return rowCount;
 }
 
 /**
@@ -279,12 +281,13 @@ export async function markAsked(ids) {
 }
 
 export async function closeQuestions({ ids, status, answerMessageId = null }) {
-  if (ids.length === 0) return;
-  await query(
+  if (ids.length === 0) return 0;
+  const { rowCount } = await query(
     `UPDATE questions SET status = $2, answer_message_id = $3, resolved_at = now()
      WHERE id = ANY($1) AND status = 'open'`,
     [ids, status, answerMessageId],
   );
+  return rowCount;
 }
 
 /** ผู้ใช้พิมพ์ "ข้าม" หมายถึงข้ามคำถามชุดที่เพิ่งถามไป ไม่ใช่ล้างคิวทั้งหมด */
@@ -323,11 +326,566 @@ export async function countOpenQuestions(userId) {
   return rows[0].n;
 }
 
+// ---------- หน้าผู้ดูแล ----------
+
+/** สิ่งที่แก้จากหน้าผู้ดูแลบันทึกในนามนี้ (db.js สร้างชื่อไว้ให้แล้ว) หนังสือจะได้บอกได้ว่าไม่ได้มาจากแชท */
+export const ADMIN_ID = 'admin';
+
+/** Postgres ส่ง bigint กับ count ขนาดใหญ่กลับมาเป็นสตริง แปลงเป็นตัวเลขก่อนใช้ */
+const numbers = (row) => Object.fromEntries(Object.entries(row).map(([k, v]) => [k, Number(v)]));
+
+/** ตัวเลขรวมของทั้งระบบ และพื้นที่ที่ฐานข้อมูลใช้ไป */
+export async function loadOverview() {
+  const [counts, tables] = await Promise.all([
+    query(
+      `SELECT
+         (SELECT count(*) FROM rules WHERE status = 'active')      AS rules_active,
+         (SELECT count(*) FROM rules WHERE status = 'retired')     AS rules_retired,
+         (SELECT count(*) FROM rules WHERE hidden)                 AS rules_hidden,
+         (SELECT count(*) FROM questions WHERE status = 'open')    AS questions_open,
+         (SELECT count(*) FROM questions WHERE status = 'answered') AS questions_answered,
+         (SELECT count(*) FROM questions WHERE status = 'skipped') AS questions_skipped,
+         (SELECT count(*) FROM conflicts WHERE status = 'open')    AS conflicts_open,
+         (SELECT count(*) FROM conflicts WHERE status <> 'open')   AS conflicts_closed,
+         (SELECT count(*) FROM messages)                           AS messages,
+         (SELECT count(*) FROM audio)                              AS voices,
+         (SELECT COALESCE(sum(duration_ms), 0) FROM audio)         AS voice_ms,
+         (SELECT count(*) FROM users WHERE user_id <> '${ADMIN_ID}') AS users,
+         (SELECT count(*) FROM trash)                              AS trash,
+         pg_database_size(current_database())                      AS db_bytes`,
+    ),
+    query(
+      `SELECT c.relname AS name, pg_total_relation_size(c.oid) AS bytes
+       FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+       WHERE n.nspname = current_schema() AND c.relkind = 'r'
+       ORDER BY bytes DESC`,
+    ),
+  ]);
+  return {
+    counts: numbers(counts.rows[0]),
+    tables: tables.rows.map((t) => ({ name: t.name, bytes: Number(t.bytes) })),
+  };
+}
+
+export async function loadRulesAdmin() {
+  const [rules, changes] = await Promise.all([
+    query(
+      `SELECT r.id, r.topic, r.title, r.summary, r.status, r.hidden, r.created_at, r.retired_at,
+              COALESCE(u.display_name, '${UNKNOWN_NAME}') AS author
+       FROM rules r LEFT JOIN users u ON u.user_id = r.created_by
+       ORDER BY r.topic, r.id`,
+    ),
+    query(
+      `SELECT c.kind, c.old_rule_ids, c.new_rule_ids, c.reason, c.created_at,
+              COALESCE(u.display_name, '${UNKNOWN_NAME}') AS author
+       FROM rule_changes c LEFT JOIN users u ON u.user_id = c.user_id
+       ORDER BY c.id`,
+    ),
+  ]);
+  return { rules: rules.rows, changes: changes.rows };
+}
+
+/** status เป็น null = ทุกสถานะ */
+export async function loadQuestionsAdmin(status) {
+  const { rows } = await query(
+    `SELECT q.id, q.topic, q.rule_ids, q.question, q.status, q.hidden, q.asked_at, q.asked_count,
+            q.created_at, q.resolved_at, a.text AS answer_text,
+            COALESCE(u.display_name, '${UNKNOWN_NAME}') AS author
+     FROM questions q
+     LEFT JOIN users u ON u.user_id = q.user_id
+     LEFT JOIN messages a ON a.id = q.answer_message_id
+     WHERE ($1::text IS NULL OR q.status = $1)
+     ORDER BY (q.status = 'open') DESC, q.id DESC`,
+    [status],
+  );
+  return rows;
+}
+
+export async function loadConflictsAdmin() {
+  const { rows } = await query(
+    `SELECT c.id, c.status, c.rule_ids, c.explanation, c.question, c.decision, c.created_at,
+            m.text AS original_text, a.text AS answer_text,
+            COALESCE(u.display_name, '${UNKNOWN_NAME}') AS author
+     FROM conflicts c
+     JOIN messages m ON m.id = c.message_id
+     LEFT JOIN messages a ON a.id = c.answer_message_id
+     LEFT JOIN users u ON u.user_id = c.user_id
+     ORDER BY (c.status = 'open') DESC, c.id DESC`,
+  );
+  return rows;
+}
+
+/** ทุกคนที่เคยคุยกับบอท เรียงจากคนที่คุยล่าสุด */
+export async function listUsersAdmin() {
+  const { rows } = await query(
+    `SELECT u.user_id, COALESCE(u.display_name, '${UNKNOWN_NAME}') AS name,
+            (SELECT count(*)::int FROM messages m WHERE m.user_id = u.user_id) AS messages,
+            (SELECT count(*)::int FROM rules r WHERE r.created_by = u.user_id AND r.status = 'active') AS rules,
+            last.text AS last_text, last.created_at AS last_at
+     FROM users u
+     LEFT JOIN LATERAL (
+       SELECT text, created_at FROM messages m WHERE m.user_id = u.user_id ORDER BY id DESC LIMIT 1
+     ) last ON true
+     WHERE u.user_id <> '${ADMIN_ID}'
+     ORDER BY last.created_at DESC NULLS LAST`,
+  );
+  return rows;
+}
+
+/** แชทของผู้ใช้หนึ่งคน ทีละหน้า before = เอาเฉพาะข้อความที่เก่ากว่า id นี้ */
+export async function loadChat(userId, before, limit) {
+  const [user, messages] = await Promise.all([
+    getUser(userId),
+    query(
+      `SELECT m.id, m.role, m.text, m.source, m.created_at,
+              a.duration_ms, (a.message_id IS NOT NULL) AS has_audio,
+              ARRAY(SELECT s.rule_id FROM rule_sources s WHERE s.message_id = m.id ORDER BY s.rule_id) AS rule_ids
+       FROM messages m LEFT JOIN audio a ON a.message_id = m.id
+       WHERE m.user_id = $1 AND ($2::bigint IS NULL OR m.id < $2)
+       ORDER BY m.id DESC
+       LIMIT $3`,
+      [userId, before, limit],
+    ),
+  ]);
+  return { user, messages: messages.rows.reverse() };
+}
+
+/**
+ * ไทม์ไลน์ของทุกอย่างที่เปลี่ยน รวมจากสามที่
+ * - กฎใหม่ที่มีคนสอนผ่านแชท (กฎที่ไม่ได้เกิดจากการแก้หรือตัดสินข้อขัดแย้ง)
+ * - การเปลี่ยนกฎจากแชท
+ * - ทุกอย่างที่ผู้ดูแลทำ (admin_log) ส่วนที่ผู้ดูแลทำใน rule_changes ไม่ดึงซ้ำ
+ */
+export async function loadTimeline(limit) {
+  const { rows } = await query(
+    `SELECT * FROM (
+       SELECT 'teach' AS kind, '#' || r.id || ' ' || r.title AS detail, r.created_at,
+              COALESCE(u.display_name, '${UNKNOWN_NAME}') AS author
+       FROM rules r LEFT JOIN users u ON u.user_id = r.created_by
+       WHERE NOT EXISTS (SELECT 1 FROM rule_changes c WHERE r.id = ANY(c.new_rule_ids))
+       UNION ALL
+       SELECT c.kind,
+              concat_ws(' → ',
+                NULLIF(array_to_string(ARRAY(SELECT '#' || x FROM unnest(c.old_rule_ids) x), ' '), ''),
+                NULLIF(array_to_string(ARRAY(SELECT '#' || x FROM unnest(c.new_rule_ids) x), ' '), '')
+              ) || ': ' || c.reason,
+              c.created_at, COALESCE(u.display_name, '${UNKNOWN_NAME}')
+       FROM rule_changes c LEFT JOIN users u ON u.user_id = c.user_id
+       WHERE c.user_id <> '${ADMIN_ID}'
+       UNION ALL
+       SELECT 'admin:' || a.action, a.detail, a.created_at, 'ผู้ดูแลระบบ'
+       FROM admin_log a
+     ) t
+     ORDER BY created_at DESC
+     LIMIT $1`,
+    [limit],
+  );
+  return rows;
+}
+
+export async function logAdmin(action, detail) {
+  await query('INSERT INTO admin_log (action, detail) VALUES ($1, $2)', [action, detail]);
+}
+
+export async function getSetting(key) {
+  const { rows } = await query('SELECT value FROM settings WHERE key = $1', [key]);
+  return rows[0]?.value ?? null;
+}
+
+export async function saveSetting(key, value) {
+  await query(
+    `INSERT INTO settings (key, value) VALUES ($1, $2)
+     ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`,
+    [key, JSON.stringify(value)],
+  );
+}
+
+/** ซ่อนหรือแสดงในหนังสือ คืนแถวที่เปลี่ยน หรือ null ถ้าไม่พบ */
+export async function setRuleHidden(ruleId, hidden) {
+  const { rows } = await query('UPDATE rules SET hidden = $2 WHERE id = $1 RETURNING id, title', [
+    ruleId,
+    hidden,
+  ]);
+  return rows[0] ?? null;
+}
+
+export async function setQuestionHidden(questionId, hidden) {
+  const { rows } = await query(
+    'UPDATE questions SET hidden = $2 WHERE id = $1 RETURNING id, question',
+    [questionId, hidden],
+  );
+  return rows[0] ?? null;
+}
+
+/**
+ * คำถามค้างที่ไม่เหลือกฎที่ใช้อยู่ให้ถามถึงแล้ว ปิดทิ้งไป บอทจะได้ไม่ทวงเรื่องที่เลิกใช้ไปแล้ว
+ * คำถามที่ไม่ได้ผูกกับกฎข้อไหนเลยไม่โดนแตะ คืน id ที่ปิดไป
+ */
+async function closeOrphanQuestions(db, ruleIds) {
+  const { rows } = await db.query(
+    `UPDATE questions q SET status = 'skipped', resolved_at = now()
+     WHERE q.status = 'open' AND q.rule_ids && $1::int[]
+       AND NOT EXISTS (SELECT 1 FROM rules r WHERE r.id = ANY(q.rule_ids) AND r.status = 'active')
+     RETURNING q.id`,
+    [ruleIds],
+  );
+  return rows.map((r) => r.id);
+}
+
+/** คืน false ถ้ากฎข้อนั้นไม่ได้ใช้อยู่แล้ว */
+export async function retireRule({ ruleId, reason }) {
+  return withTransaction(async (db) => {
+    const retired = await retireRules(db, [ruleId]);
+    if (retired.length === 0) return false;
+    await db.query(
+      `INSERT INTO rule_changes (kind, old_rule_ids, new_rule_ids, reason, user_id)
+       VALUES ('retire', $1, '{}', $2, $3)`,
+      [retired, reason, ADMIN_ID],
+    );
+    await closeOrphanQuestions(db, retired);
+    return true;
+  });
+}
+
+/**
+ * แก้กฎแบบเดียวกับตอนบอทเพิ่มรายละเอียด คือเลิกใช้ฉบับเดิมแล้วสร้างฉบับใหม่ ประวัติจะได้ไม่หาย
+ * ฉบับใหม่ยังนับเป็นของผู้สอนคนเดิมและอ้างคำพูดต้นฉบับชุดเดิม เพราะเนื้อหายังมาจากที่เขาสอน
+ * ส่วนใครแก้อะไรเพราะอะไร ดูได้จากประวัติของกฎ
+ *
+ * คืน id ฉบับใหม่, id เดิมถ้าไม่มีอะไรเปลี่ยน หรือ null ถ้ากฎนั้นไม่ได้ใช้อยู่แล้ว
+ */
+export async function editRule({ ruleId, rule, reason }) {
+  return withTransaction(async (db) => {
+    const { rows } = await db.query(
+      `SELECT created_by, topic, title, summary FROM rules
+       WHERE id = $1 AND status = 'active' FOR UPDATE`,
+      [ruleId],
+    );
+    const old = rows[0];
+    if (!old) return null;
+    if (old.topic === rule.topic && old.title === rule.title && old.summary === rule.summary) {
+      return ruleId;
+    }
+
+    await retireRules(db, [ruleId]);
+    const sources = await db.query('SELECT message_id FROM rule_sources WHERE rule_id = $1', [ruleId]);
+    const created = await insertRule(db, rule, old.created_by, sources.rows.map((s) => s.message_id));
+    await db.query(
+      `INSERT INTO rule_changes (kind, old_rule_ids, new_rule_ids, reason, user_id)
+       VALUES ('edit', $1, $2, $3, $4)`,
+      [[ruleId], [created.id], reason, ADMIN_ID],
+    );
+    // คำถามที่ค้างอยู่ต้องชี้ไปที่ฉบับใหม่ ไม่งั้นคำตอบที่ได้มาทีหลังจะหากฎให้รวมเข้าไปไม่เจอ
+    await db.query(
+      `UPDATE questions SET rule_ids = array_replace(rule_ids, $1::int, $2::int)
+       WHERE status = 'open' AND $1::int = ANY(rule_ids)`,
+      [ruleId, created.id],
+    );
+    return created.id;
+  });
+}
+
+/** คืน false ถ้ากฎข้อนั้นใช้อยู่แล้ว หรือไม่มีอยู่จริง */
+export async function restoreRule({ ruleId, reason }) {
+  return withTransaction(async (db) => {
+    const { rowCount } = await db.query(
+      `UPDATE rules SET status = 'active', retired_at = NULL WHERE id = $1 AND status = 'retired'`,
+      [ruleId],
+    );
+    if (rowCount === 0) return false;
+    await db.query(
+      `INSERT INTO rule_changes (kind, old_rule_ids, new_rule_ids, reason, user_id)
+       VALUES ('restore', '{}', $1, $2, $3)`,
+      [[ruleId], reason, ADMIN_ID],
+    );
+    return true;
+  });
+}
+
+// ---------- ถังขยะ ----------
+//
+// ลบ = ย้ายแถวออกจากตารางจริงทันที แล้วเก็บสำเนาไว้ในตาราง trash
+// ไม่ใช้วิธีติดธง deleted ไว้ในตารางเดิม เพราะต้องไล่แก้ทุก query ของบอทให้กรองออก
+// ถ้าพลาดไปสักจุด ของที่ลบแล้วจะหลุดเข้า AI หรือหนังสือ แบบนี้ของที่ลบแล้วไม่อยู่ให้หลุดเลย
+//
+// ของที่ผูกกันอยู่ (ที่มาของกฎ ประวัติ ไฟล์เสียง) ถูกเก็บลงสำเนาเดียวกัน กู้คืนแล้วจะกลับมาครบ
+// ยกเว้นของที่ผูกไว้ถูกลบตามไปแล้ว ก็ข้ามส่วนนั้นไป
+
+async function insertRow(db, table, row) {
+  const cols = Object.keys(row);
+  await db.query(
+    `INSERT INTO ${table} (${cols.join(', ')}) VALUES (${cols.map((_, i) => `$${i + 1}`).join(', ')})`,
+    cols.map((c) => row[c]),
+  );
+}
+
+async function exists(db, table, id) {
+  const { rows } = await db.query(`SELECT 1 FROM ${table} WHERE id = $1`, [id]);
+  return rows.length > 0;
+}
+
+async function putInTrash(db, kind, itemId, label, snapshot) {
+  await db.query('INSERT INTO trash (kind, item_id, label, snapshot) VALUES ($1, $2, $3, $4)', [
+    kind,
+    itemId,
+    label.slice(0, 300),
+    JSON.stringify(snapshot),
+  ]);
+}
+
+/** ลบกฎพร้อมที่มาและประวัติของมัน คืนแถวกฎที่ลบ หรือ null ถ้าไม่พบ */
+export async function trashRule(ruleId) {
+  return withTransaction(async (db) => {
+    const { rows } = await db.query('SELECT * FROM rules WHERE id = $1 FOR UPDATE', [ruleId]);
+    const rule = rows[0];
+    if (!rule) return null;
+
+    const sources = await db.query('SELECT * FROM rule_sources WHERE rule_id = $1', [ruleId]);
+    const changes = await db.query(
+      'SELECT * FROM rule_changes WHERE $1::int = ANY(old_rule_ids) OR $1::int = ANY(new_rule_ids)',
+      [ruleId],
+    );
+    const changeIds = changes.rows.map((c) => c.id);
+
+    await db.query('DELETE FROM rule_sources WHERE rule_id = $1', [ruleId]);
+    // ประวัติที่มีกฎข้ออื่นร่วมอยู่ด้วย ตัดแค่เลขข้อนี้ออก กฎข้ออื่นจะได้ไม่เสียประวัติไปด้วย
+    await db.query(
+      `UPDATE rule_changes
+       SET old_rule_ids = array_remove(old_rule_ids, $1::int), new_rule_ids = array_remove(new_rule_ids, $1::int)
+       WHERE id = ANY($2)`,
+      [ruleId, changeIds],
+    );
+    await db.query(
+      `DELETE FROM rule_changes
+       WHERE id = ANY($1) AND cardinality(old_rule_ids) = 0 AND cardinality(new_rule_ids) = 0`,
+      [changeIds],
+    );
+    await db.query('DELETE FROM rules WHERE id = $1', [ruleId]);
+    const closedQuestions = await closeOrphanQuestions(db, [ruleId]);
+
+    await putInTrash(db, 'rule', ruleId, `#${ruleId} ${rule.title}`, {
+      rule,
+      sources: sources.rows,
+      changes: changes.rows,
+      closedQuestions,
+    });
+    return rule;
+  });
+}
+
+async function restoreRuleRows(db, { rule, sources, changes, closedQuestions }) {
+  await insertRow(db, 'rules', rule);
+  for (const s of sources) {
+    await db.query(
+      `INSERT INTO rule_sources (rule_id, message_id)
+       SELECT $1, $2 WHERE EXISTS (SELECT 1 FROM messages WHERE id = $2)
+       ON CONFLICT DO NOTHING`,
+      [s.rule_id, s.message_id],
+    );
+  }
+
+  for (const change of changes) {
+    const inOld = change.old_rule_ids.includes(rule.id);
+    const inNew = change.new_rule_ids.includes(rule.id);
+    if (await exists(db, 'rule_changes', change.id)) {
+      await db.query(
+        `UPDATE rule_changes SET
+           old_rule_ids = CASE WHEN $2 AND NOT ($1::int = ANY(old_rule_ids)) THEN old_rule_ids || $1::int ELSE old_rule_ids END,
+           new_rule_ids = CASE WHEN $3 AND NOT ($1::int = ANY(new_rule_ids)) THEN new_rule_ids || $1::int ELSE new_rule_ids END
+         WHERE id = $4`,
+        [rule.id, inOld, inNew, change.id],
+      );
+      continue;
+    }
+    // แถวประวัติหายไปแล้ว (กฎทุกข้อในแถวนั้นถูกลบ) สร้างกลับเฉพาะเลขข้อที่ยังมีอยู่
+    const { rows } = await db.query('SELECT id FROM rules WHERE id = ANY($1)', [
+      [...change.old_rule_ids, ...change.new_rule_ids],
+    ]);
+    const alive = new Set(rows.map((r) => r.id));
+    const conflictAlive = change.conflict_id && (await exists(db, 'conflicts', change.conflict_id));
+    await insertRow(db, 'rule_changes', {
+      ...change,
+      old_rule_ids: change.old_rule_ids.filter((id) => alive.has(id)),
+      new_rule_ids: change.new_rule_ids.filter((id) => alive.has(id)),
+      conflict_id: conflictAlive ? change.conflict_id : null,
+    });
+  }
+
+  await db.query(
+    `UPDATE questions SET status = 'open', resolved_at = NULL WHERE id = ANY($1) AND status = 'skipped'`,
+    [closedQuestions],
+  );
+}
+
+/** คืนแถวคำถามที่ลบ หรือ null ถ้าไม่พบ */
+export async function trashQuestion(questionId) {
+  return withTransaction(async (db) => {
+    const { rows } = await db.query('DELETE FROM questions WHERE id = $1 RETURNING *', [questionId]);
+    const question = rows[0];
+    if (!question) return null;
+    await putInTrash(db, 'question', questionId, question.question, { question });
+    return question;
+  });
+}
+
+async function restoreQuestionRows(db, { question }) {
+  const answerAlive = question.answer_message_id && (await exists(db, 'messages', question.answer_message_id));
+  await insertRow(db, 'questions', {
+    ...question,
+    answer_message_id: answerAlive ? question.answer_message_id : null,
+  });
+}
+
+/** คืนแถวข้อขัดแย้งที่ลบ หรือ null ถ้าไม่พบ */
+export async function trashConflict(conflictId) {
+  return withTransaction(async (db) => {
+    const { rows } = await db.query('SELECT * FROM conflicts WHERE id = $1 FOR UPDATE', [conflictId]);
+    const conflict = rows[0];
+    if (!conflict) return null;
+
+    // ประวัติกฎที่เกิดจากการตัดสินเรื่องนี้ยังเก็บไว้ แค่ตัดลิงก์ที่ชี้มาหาเรื่องนี้ออก
+    const linked = await db.query(
+      'UPDATE rule_changes SET conflict_id = NULL WHERE conflict_id = $1 RETURNING id',
+      [conflictId],
+    );
+    await db.query('DELETE FROM conflicts WHERE id = $1', [conflictId]);
+    await putInTrash(db, 'conflict', conflictId, conflict.explanation, {
+      conflict,
+      changeIds: linked.rows.map((r) => r.id),
+    });
+    return conflict;
+  });
+}
+
+async function restoreConflictRows(db, { conflict, changeIds }) {
+  if (!(await exists(db, 'messages', conflict.message_id))) {
+    return 'needs_message';
+  }
+  const answerAlive = conflict.answer_message_id && (await exists(db, 'messages', conflict.answer_message_id));
+  await insertRow(db, 'conflicts', {
+    ...conflict,
+    answer_message_id: answerAlive ? conflict.answer_message_id : null,
+  });
+  await db.query('UPDATE rule_changes SET conflict_id = $1 WHERE id = ANY($2) AND conflict_id IS NULL', [
+    conflict.id,
+    changeIds,
+  ]);
+  return null;
+}
+
+/**
+ * ลบข้อความแชทพร้อมไฟล์เสียง
+ * ข้อความที่เป็นต้นเรื่องของข้อขัดแย้งลบไม่ได้ เพราะข้อขัดแย้งขาดต้นเรื่องไม่ได้ ต้องลบข้อขัดแย้งก่อน
+ * คืน { message } ถ้าลบได้, { blockedBy: [id ข้อขัดแย้ง] } ถ้าลบไม่ได้ หรือ null ถ้าไม่พบ
+ */
+export async function trashMessage(messageId) {
+  return withTransaction(async (db) => {
+    const { rows } = await db.query('SELECT * FROM messages WHERE id = $1 FOR UPDATE', [messageId]);
+    const message = rows[0];
+    if (!message) return null;
+
+    const origins = await db.query('SELECT id FROM conflicts WHERE message_id = $1', [messageId]);
+    if (origins.rows.length > 0) return { blockedBy: origins.rows.map((r) => r.id) };
+
+    const audio = await db.query('SELECT * FROM audio WHERE message_id = $1', [messageId]);
+    const sources = await db.query('SELECT * FROM rule_sources WHERE message_id = $1', [messageId]);
+    const answeredConflicts = await db.query(
+      'UPDATE conflicts SET answer_message_id = NULL WHERE answer_message_id = $1 RETURNING id',
+      [messageId],
+    );
+    const answeredQuestions = await db.query(
+      'UPDATE questions SET answer_message_id = NULL WHERE answer_message_id = $1 RETURNING id',
+      [messageId],
+    );
+    await db.query('DELETE FROM audio WHERE message_id = $1', [messageId]);
+    await db.query('DELETE FROM rule_sources WHERE message_id = $1', [messageId]);
+    await db.query('DELETE FROM messages WHERE id = $1', [messageId]);
+
+    const user = await getUserIn(db, message.user_id);
+    const who = message.role === 'assistant' ? 'บอท' : (user?.display_name ?? UNKNOWN_NAME);
+    // ไฟล์เสียงเป็น byte ดิบ แปลงเป็น base64 ก่อนเก็บลง JSON
+    const voice = audio.rows[0] ? { ...audio.rows[0], data: audio.rows[0].data.toString('base64') } : null;
+    await putInTrash(db, 'message', messageId, `${who}: ${message.text || '(เสียง)'}`, {
+      message,
+      audio: voice,
+      sources: sources.rows,
+      conflictIds: answeredConflicts.rows.map((r) => r.id),
+      questionIds: answeredQuestions.rows.map((r) => r.id),
+    });
+    return { message };
+  });
+}
+
+async function getUserIn(db, userId) {
+  const { rows } = await db.query('SELECT * FROM users WHERE user_id = $1', [userId]);
+  return rows[0] ?? null;
+}
+
+async function restoreMessageRows(db, { message, audio, sources, conflictIds, questionIds }) {
+  await insertRow(db, 'messages', message);
+  if (audio) await insertRow(db, 'audio', { ...audio, data: Buffer.from(audio.data, 'base64') });
+  for (const s of sources) {
+    await db.query(
+      `INSERT INTO rule_sources (rule_id, message_id)
+       SELECT $1, $2 WHERE EXISTS (SELECT 1 FROM rules WHERE id = $1)
+       ON CONFLICT DO NOTHING`,
+      [s.rule_id, s.message_id],
+    );
+  }
+  await db.query(
+    'UPDATE conflicts SET answer_message_id = $1 WHERE id = ANY($2) AND answer_message_id IS NULL',
+    [message.id, conflictIds],
+  );
+  await db.query(
+    'UPDATE questions SET answer_message_id = $1 WHERE id = ANY($2) AND answer_message_id IS NULL',
+    [message.id, questionIds],
+  );
+}
+
+export async function listTrash() {
+  const { rows } = await query(
+    'SELECT id, kind, item_id, label, deleted_at FROM trash ORDER BY deleted_at DESC, id DESC',
+  );
+  return rows;
+}
+
+const RESTORERS = {
+  rule: restoreRuleRows,
+  question: restoreQuestionRows,
+  conflict: restoreConflictRows,
+  message: restoreMessageRows,
+};
+
+/**
+ * กู้ของในถังขยะกลับไปที่เดิม
+ * คืน { item } ถ้าสำเร็จ, { error } ถ้ากู้ไม่ได้ (ของยังอยู่ในถัง) หรือ null ถ้าไม่พบ
+ */
+export async function restoreFromTrash(trashId) {
+  return withTransaction(async (db) => {
+    const { rows } = await db.query('SELECT * FROM trash WHERE id = $1 FOR UPDATE', [trashId]);
+    const item = rows[0];
+    if (!item) return null;
+
+    const error = await RESTORERS[item.kind](db, item.snapshot);
+    if (error) return { error, item };
+    await db.query('DELETE FROM trash WHERE id = $1', [trashId]);
+    return { item };
+  });
+}
+
+/** ลบถาวร คืนจำนวนที่ลบไป ids เป็น null = ล้างทั้งถัง */
+export async function purgeTrash(ids) {
+  const { rowCount } = ids
+    ? await query('DELETE FROM trash WHERE id = ANY($1)', [ids])
+    : await query('DELETE FROM trash');
+  return rowCount;
+}
+
 // ---------- หนังสือ ----------
 
 /** ดึงทุกอย่างที่หนังสือต้องใช้ในครั้งเดียว */
 export async function loadBook() {
-  const [rules, sources, changes, conflicts, questions, chapters] = await Promise.all([
+  const [rules, sources, changes, conflicts, questions, chapters, settings] = await Promise.all([
     query(
       `SELECT r.*, COALESCE(u.display_name, '${UNKNOWN_NAME}') AS author
        FROM rules r LEFT JOIN users u ON u.user_id = r.created_by
@@ -360,10 +918,11 @@ export async function loadBook() {
       `SELECT q.topic, q.rule_ids, q.question, q.asked_at,
               COALESCE(u.display_name, '${UNKNOWN_NAME}') AS author
        FROM questions q LEFT JOIN users u ON u.user_id = q.user_id
-       WHERE q.status = 'open'
+       WHERE q.status = 'open' AND NOT q.hidden
        ORDER BY q.id`,
     ),
     query('SELECT topic, source_hash, content FROM chapters'),
+    getSetting('book'),
   ]);
 
   return {
@@ -373,6 +932,7 @@ export async function loadBook() {
     conflicts: conflicts.rows,
     questions: questions.rows,
     chapters: new Map(chapters.rows.map((c) => [c.topic, c])),
+    settings,
   };
 }
 

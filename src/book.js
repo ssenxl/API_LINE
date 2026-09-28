@@ -12,8 +12,36 @@ import * as kb from './knowledge.js';
 
 const CHAPTER_CONCURRENCY = 3;
 
+/** ส่วนของเล่มที่ผู้ดูแลเปิดปิดได้จากหน้า /admin/book ค่าเริ่มต้นคือแสดงทุกส่วน */
+export const BOOK_SECTIONS = [
+  { key: 'howto', label: 'กล่อง "วิธีอ่านเล่มนี้"' },
+  { key: 'gaps', label: 'กล่อง "สิ่งที่ยังไม่ชัด" ท้ายบท (คำถามค้าง)' },
+  { key: 'sources', label: 'คำพูดต้นฉบับของผู้สอนใต้กฎแต่ละข้อ' },
+  { key: 'audio', label: 'ปุ่มฟังเสียงต้นฉบับ' },
+  { key: 'history', label: 'ประวัติการเปลี่ยนแปลงของกฎ' },
+  { key: 'authors', label: 'ชื่อผู้สอนและผู้ตัดสิน' },
+  { key: 'open', label: 'ส่วน "เรื่องที่รอคำตอบ"' },
+  { key: 'decisions', label: 'ภาคผนวก ก · ข้อขัดแย้งที่เคยตัดสิน' },
+  { key: 'retired', label: 'ภาคผนวก ข · กฎที่เลิกใช้แล้ว' },
+];
+
+/** รวมค่าที่ผู้ดูแลตั้งไว้กับค่าเริ่มต้น ของที่ยังไม่เคยตั้งให้แสดงไว้ก่อน */
+export function bookSettings(saved) {
+  const sections = Object.fromEntries(
+    BOOK_SECTIONS.map(({ key }) => [key, saved?.sections?.[key] ?? true]),
+  );
+  return { sections, hiddenTopics: Array.isArray(saved?.hiddenTopics) ? saved.hiddenTopics : [] };
+}
+
 export async function renderBook() {
   const data = await kb.loadBook();
+  const settings = bookSettings(data.settings);
+  data.show = settings.sections;
+
+  // กฎที่ซ่อนต้องไม่ถูกส่งให้ AI เรียบเรียงด้วย ไม่งั้นเนื้อหาบทจะเล่าถึงกฎที่ตั้งใจซ่อน
+  const hiddenTopics = new Set(settings.hiddenTopics);
+  data.rules = data.rules.filter((r) => !r.hidden && !hiddenTopics.has(r.topic));
+  data.questions = data.questions.filter((q) => !hiddenTopics.has(q.topic));
   const active = data.rules.filter((r) => r.status === 'active');
 
   const byTopic = new Map();
@@ -87,6 +115,26 @@ function lineage(ruleId, data) {
   return { steps, ids: [...seen] };
 }
 
+const CHANGE_LABELS = {
+  refine: 'เพิ่มรายละเอียด',
+  conflict: 'ตัดสินข้อขัดแย้ง',
+  edit: 'ผู้ดูแลแก้ไข',
+};
+
+/** การเปลี่ยนครั้งล่าสุดที่ทำให้กฎข้อนี้เลิกใช้ (ถ้าเคยกู้คืนแล้วเลิกใช้อีก เอาครั้งหลังสุด) */
+export function retiredBy(ruleId, changes) {
+  return changes.findLast((c) => c.old_rule_ids.includes(ruleId)) ?? null;
+}
+
+/** ข้อความธรรมดา ผู้เรียกต้อง escape เอง */
+export function retirementNote(change, withAuthor = true) {
+  const next = change.new_rule_ids.map((id) => `#${id}`).join(' ');
+  const by = withAuthor ? `${change.author} · ${date(change.created_at)}` : date(change.created_at);
+  return next
+    ? `ถูกแทนด้วย ${next} — ${change.reason} (${by})`
+    : `เลิกใช้เพราะ ${change.reason} (${by})`;
+}
+
 function sourcesFor(ids, data) {
   const byMessage = new Map();
   for (const source of data.sources) {
@@ -97,13 +145,13 @@ function sourcesFor(ids, data) {
 
 // ---------- HTML ----------
 
-const escape = (value) =>
+export const escape = (value) =>
   String(value ?? '').replace(
     /[&<>"']/g,
     (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c],
   );
 
-const date = (value) =>
+export const date = (value) =>
   new Date(value).toLocaleDateString('th-TH', {
     timeZone: 'Asia/Bangkok',
     day: 'numeric',
@@ -113,7 +161,7 @@ const date = (value) =>
 
 /** ทำให้ (ข้อ #12) ในเนื้อหากดไปดูกฎข้อนั้นได้ */
 // (?<!&) กันไม่ให้ไปแตะ &#39; ที่ได้จากการ escape เครื่องหมาย '
-const linkRules = (html) =>
+export const linkRules = (html) =>
   html.replace(/(?<!&)#(\d+)/g, (_m, id) => `<a class="ref" href="#rule-${id}">#${id}</a>`);
 
 const BULLET = /^(?:[-•]|\d+[.)])\s+/;
@@ -164,33 +212,38 @@ function voicePlayer(messageId) {
   return `<audio controls preload="none" src="${src}"></audio>`;
 }
 
-/** ข้อความต้นฉบับ ถ้ามาจากเสียงจะมีปุ่มฟังเสียงจริงอยู่ด้วย */
-function original({ text, source, messageId }) {
+/** ข้อความต้นฉบับ ถ้ามาจากเสียงจะมีปุ่มฟังเสียงจริงอยู่ด้วย (ถ้าผู้ดูแลไม่ได้ปิดไว้) */
+function original({ text, source, messageId }, show) {
   const voice = source === 'voice';
-  return `${voice ? `<p class="label">🎤 พูดมาเป็นเสียง · ข้อความด้านล่างถอดโดย AI</p>${voicePlayer(messageId)}` : ''}
+  return `${voice ? `<p class="label">🎤 พูดมาเป็นเสียง · ข้อความด้านล่างถอดโดย AI</p>${show.audio ? voicePlayer(messageId) : ''}` : ''}
     <p>${escape(text).replace(/\n/g, '<br>') || '<em>(ถอดเสียงไม่ออก)</em>'}</p>`;
 }
 
-function quote(source) {
+/** "ชื่อ · " ถ้าผู้ดูแลเปิดให้แสดงชื่อ ไม่งั้นเป็นค่าว่าง */
+const byline = (show, name) => (show.authors ? `${escape(name)} · ` : '');
+
+function quote(source, show) {
   return `<blockquote>
-    ${original({ text: source.text, source: source.source, messageId: source.message_id })}
-    <cite>${escape(source.author)} · ${date(source.created_at)}</cite>
+    ${original({ text: source.text, source: source.source, messageId: source.message_id }, show)}
+    <cite>${byline(show, source.author)}${date(source.created_at)}</cite>
   </blockquote>`;
 }
 
 function ruleCard(rule, data) {
+  const { show } = data;
   const { steps, ids } = lineage(rule.id, data);
-  const sources = sourcesFor(ids, data);
+  const sources = show.sources ? sourcesFor(ids, data) : [];
   const retired = rule.status === 'retired';
+  const ending = retired ? retiredBy(rule.id, data.changes) : null;
 
-  const history = steps.length
+  const history = show.history && steps.length
     ? `<details>
         <summary>ประวัติการเปลี่ยนแปลง (${steps.length})</summary>
         ${steps
           .map(
             ({ change, oldRules }) => `<div class="change">
-              <p class="meta">${date(change.created_at)} · ${escape(change.author)} ·
-                ${change.kind === 'conflict' ? 'ตัดสินข้อขัดแย้ง' : 'เพิ่มรายละเอียด'}</p>
+              <p class="meta">${date(change.created_at)} · ${show.authors ? `${escape(change.author)} · ` : ''}
+                ${CHANGE_LABELS[change.kind] ?? change.kind}</p>
               <p>${linkRules(escape(change.reason))}</p>
               ${oldRules
                 .map(
@@ -211,12 +264,13 @@ function ruleCard(rule, data) {
       ${retired ? `<span class="badge">เลิกใช้ ${date(rule.retired_at)}</span>` : ''}
     </header>
     <p class="summary">${escape(rule.summary)}</p>
-    <p class="meta">สอนโดย ${escape(rule.author)} · ${date(rule.created_at)}</p>
+    <p class="meta">${show.authors ? `สอนโดย ${escape(rule.author)} · ` : 'บันทึกเมื่อ '}${date(rule.created_at)}</p>
+    ${ending ? `<p class="meta">${linkRules(escape(retirementNote(ending, show.authors)))}</p>` : ''}
     ${
       sources.length
         ? `<details>
             <summary>คำพูดต้นฉบับจากผู้สอน (${sources.length})</summary>
-            ${sources.map(quote).join('')}
+            ${sources.map((s) => quote(s, show)).join('')}
           </details>`
         : ''
     }
@@ -228,13 +282,14 @@ function ruleCard(rule, data) {
  * ช่องโหว่ของบทนี้ มาจากคำถามที่บอทถามผู้สอนใน LINE ไปแล้วและยังไม่ได้คำตอบ
  * ไม่ได้ให้ AI คิดขึ้นตอนเขียนหนังสือ เพราะที่เขียนไว้ในเล่มต้องเป็นเรื่องที่มีคนถูกถามจริง
  */
-function gapsAside(questions) {
-  if (questions.length === 0) return '';
+function gapsAside(questions, show) {
+  if (!show.gaps || questions.length === 0) return '';
 
   const items = questions.map((q) => {
     const refs = (q.rule_ids ?? []).map((id) => `#${id}`).join(' ');
     const tail = refs && !q.question.includes('#') ? ` (ข้อ ${refs})` : '';
-    const asked = q.asked_at ? ` — ถาม ${escape(q.author)} เมื่อ ${date(q.asked_at)}` : '';
+    const who = show.authors ? `ถาม ${escape(q.author)} ` : 'ถามไป';
+    const asked = q.asked_at ? ` — ${who}เมื่อ ${date(q.asked_at)}` : '';
     return `<li>${linkRules(escape(q.question) + tail)}<span class="meta">${asked}</span></li>`;
   });
 
@@ -258,13 +313,13 @@ function chapterSection(chapter, index, data) {
     <p class="eyebrow">บทที่ ${index + 1}</p>
     <h2>${escape(chapter.topic)}</h2>
     ${body}
-    ${gapsAside(data.questions.filter((q) => q.topic === chapter.topic))}
+    ${gapsAside(data.questions.filter((q) => q.topic === chapter.topic), data.show)}
     <h3 class="rules-heading">กฎในบทนี้ (${chapter.rules.length} ข้อ)</h3>
     ${chapter.rules.map((r) => ruleCard(r, data)).join('')}
   </section>`;
 }
 
-function conflictEntry(conflict) {
+function conflictEntry(conflict, show) {
   const proposed = conflict.proposed ?? {};
   const proposedLines = [...(proposed.rules ?? []), ...(proposed.updates ?? [])];
   const outcome =
@@ -275,14 +330,17 @@ function conflictEntry(conflict) {
         : '<span class="badge ok">ตัดสินแล้ว</span>';
 
   return `<article class="conflict">
-    <header>${outcome}<span class="meta">${date(conflict.created_at)} · ${escape(conflict.author)}</span></header>
+    <header>${outcome}<span class="meta">${date(conflict.created_at)}${show.authors ? ` · ${escape(conflict.author)}` : ''}</span></header>
     <p><strong>ขัดกันตรงไหน:</strong> ${linkRules(escape(conflict.explanation))}</p>
     <p class="label">สิ่งที่ผู้สอนพูดมา</p>
-    <blockquote>${original({
-      text: conflict.original_text,
-      source: conflict.original_source,
-      messageId: conflict.message_id,
-    })}</blockquote>
+    <blockquote>${original(
+      {
+        text: conflict.original_text,
+        source: conflict.original_source,
+        messageId: conflict.message_id,
+      },
+      show,
+    )}</blockquote>
     ${
       proposedLines.length
         ? `<p class="label">AI สรุปไว้ว่า</p>
@@ -294,11 +352,14 @@ function conflictEntry(conflict) {
     ${
       conflict.answer_text
         ? `<p class="label">ผู้สอนตอบ</p>
-           <blockquote>${original({
-             text: conflict.answer_text,
-             source: conflict.answer_source,
-             messageId: conflict.answer_message_id,
-           })}</blockquote>`
+           <blockquote>${original(
+             {
+               text: conflict.answer_text,
+               source: conflict.answer_source,
+               messageId: conflict.answer_message_id,
+             },
+             show,
+           )}</blockquote>`
         : ''
     }
     ${conflict.decision ? `<p><strong>ข้อสรุป:</strong> ${linkRules(escape(conflict.decision))}</p>` : ''}
@@ -306,13 +367,14 @@ function conflictEntry(conflict) {
 }
 
 function page(data, chapters) {
+  const { show } = data;
   data.rulesById = new Map(data.rules.map((r) => [r.id, r]));
-  const retired = data.rules.filter((r) => r.status === 'retired');
-  const activeCount = data.rules.length - retired.length;
+  const activeCount = data.rules.filter((r) => r.status === 'active').length;
+  const retired = show.retired ? data.rules.filter((r) => r.status === 'retired') : [];
   const teachers = new Set(data.rules.map((r) => r.author)).size;
   const conflicts = [...data.conflicts].reverse();
-  const openConflicts = conflicts.filter((c) => c.status === 'open');
-  const closedConflicts = conflicts.filter((c) => c.status !== 'open');
+  const openConflicts = show.open ? conflicts.filter((c) => c.status === 'open') : [];
+  const closedConflicts = show.decisions ? conflicts.filter((c) => c.status !== 'open') : [];
 
   const toc = [
     ...chapters.map(
@@ -352,24 +414,14 @@ function page(data, chapters) {
     <p class="stats">
       <span><strong>${activeCount}</strong> กฎที่ใช้อยู่</span>
       <span><strong>${chapters.length}</strong> บท</span>
-      <span><strong>${teachers}</strong> ผู้สอน</span>
+      ${show.authors ? `<span><strong>${teachers}</strong> ผู้สอน</span>` : ''}
     </p>
     <p class="meta">อัปเดตล่าสุด ${date(new Date())}</p>
   </header>
 
-  <aside class="howto">
-    <h2>วิธีอ่านเล่มนี้</h2>
-    <ul>
-      <li>แต่ละบทเริ่มด้วยคำอธิบายที่ AI เรียบเรียงจากกฎทั้งหมดในบทนั้น ให้อ่านเข้าใจภาพรวมก่อน</li>
-      <li>ท้ายบทคือรายการกฎทีละข้อ ตัวเลข <a class="ref" href="#">#12</a> กดเพื่อไปดูข้อนั้นได้</li>
-      <li>กด "คำพูดต้นฉบับ" เพื่ออ่านสิ่งที่ผู้สอนพิมพ์มาจริง ๆ ถ้าคำสรุปของ AI กับต้นฉบับไม่ตรงกัน ให้ถือต้นฉบับเป็นหลัก</li>
-      <li>กล่องสีเหลืองท้ายบทคือช่องโหว่ที่บอทถามผู้สอนใน LINE ไปแล้วและยังไม่ได้คำตอบ ใครรู้คำตอบช่วยตอบในแชทได้เลย</li>
-      <li>เรื่องที่เคยขัดแย้งกันและเหตุผลที่ตัดสิน อยู่ในภาคผนวกท้ายเล่ม</li>
-    </ul>
-  </aside>
+  ${show.howto ? HOWTO : ''}
 
   ${chapters.length || toc ? `<nav class="toc"><h2>สารบัญ</h2><ol>${toc}</ol></nav>` : ''}
-
   ${main}
 
   ${
@@ -378,7 +430,7 @@ function page(data, chapters) {
           <p class="eyebrow">ยังไม่ได้ข้อสรุป</p>
           <h2>เรื่องที่รอคำตอบ</h2>
           <p>เรื่องเหล่านี้มีคนสอนมาแต่ขัดกับของเดิม บอทถามกลับไปแล้วและยังรอคำตอบ จึงยังไม่ได้บันทึกเป็นกฎ</p>
-          ${openConflicts.map(conflictEntry).join('')}
+          ${openConflicts.map((c) => conflictEntry(c, show)).join('')}
         </section>`
       : ''
   }
@@ -389,7 +441,7 @@ function page(data, chapters) {
           <p class="eyebrow">ภาคผนวก ก</p>
           <h2>ข้อขัดแย้งที่เคยตัดสิน</h2>
           <p>บันทึกว่าเคยมีความเห็นไม่ตรงกันเรื่องอะไร ใครตอบว่าอย่างไร และสรุปออกมาแบบไหน</p>
-          ${closedConflicts.map(conflictEntry).join('')}
+          ${closedConflicts.map((c) => conflictEntry(c, show)).join('')}
         </section>`
       : ''
   }
@@ -413,7 +465,18 @@ function page(data, chapters) {
 </html>`;
 }
 
-const STYLE = `
+const HOWTO = `<aside class="howto">
+    <h2>วิธีอ่านเล่มนี้</h2>
+    <ul>
+      <li>แต่ละบทเริ่มด้วยคำอธิบายที่ AI เรียบเรียงจากกฎทั้งหมดในบทนั้น ให้อ่านเข้าใจภาพรวมก่อน</li>
+      <li>ท้ายบทคือรายการกฎทีละข้อ ตัวเลข <a class="ref" href="#">#12</a> กดเพื่อไปดูข้อนั้นได้</li>
+      <li>กด "คำพูดต้นฉบับ" เพื่ออ่านสิ่งที่ผู้สอนพิมพ์มาจริง ๆ ถ้าคำสรุปของ AI กับต้นฉบับไม่ตรงกัน ให้ถือต้นฉบับเป็นหลัก</li>
+      <li>กล่องสีเหลืองท้ายบทคือช่องโหว่ที่บอทถามผู้สอนใน LINE ไปแล้วและยังไม่ได้คำตอบ ใครรู้คำตอบช่วยตอบในแชทได้เลย</li>
+      <li>เรื่องที่เคยขัดแย้งกันและเหตุผลที่ตัดสิน อยู่ในภาคผนวกท้ายเล่ม</li>
+    </ul>
+  </aside>`;
+
+export const STYLE = `
 :root {
   --bg: #f7f4ee; --paper: #fffdf9; --ink: #1f1d1a; --muted: #6b655c; --line: #e4ddd1;
   --accent: #8a4b16; --accent-soft: #f4e6d6; --warn: #9a5b00; --warn-soft: #fbecd2;

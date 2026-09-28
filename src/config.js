@@ -64,6 +64,11 @@ export const config = {
     slug: (process.env.BOOK_SLUG || '').replace(/^\/+|\/+$/g, ''),
   },
 
+  // รหัสเข้าหน้าผู้ดูแล /admin ที่ใช้แก้ เลิกใช้ หรือกู้คืนกฎ ไม่ตั้ง = ปิดหน้านี้ไว้
+  admin: {
+    key: process.env.ADMIN_KEY || '',
+  },
+
   questions: {
     // ถามเรื่องที่ยังไม่ชัดพร้อมกันได้ไม่เกินกี่ข้อ ที่เหลือเก็บไว้ถามรอบหน้า
     askAtOnce: 2,

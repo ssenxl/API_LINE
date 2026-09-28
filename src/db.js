@@ -37,8 +37,9 @@ export async function withTransaction(fn) {
 /**
  * สร้างตารางถ้ายังไม่มี เรียกทุกครั้งตอนเปิดเซิร์ฟเวอร์ รันซ้ำได้ไม่พัง
  *
- * หลักการสำคัญ: ไม่ลบอะไรทิ้งเลย กฎที่เลิกใช้แค่เปลี่ยน status เป็น retired
+ * หลักการสำคัญ: บอทไม่ลบอะไรทิ้งเลย กฎที่เลิกใช้แค่เปลี่ยน status เป็น retired
  * เพื่อให้หนังสือเล่าย้อนได้ว่าเคยเป็นอย่างไร เปลี่ยนเพราะอะไร ใครตัดสิน
+ * คนเดียวที่ลบได้คือผู้ดูแลจากหน้า /admin และต้องผ่านถังขยะก่อนเสมอ
  */
 export async function migrate() {
   await pool.query(`
@@ -128,15 +129,54 @@ export async function migrate() {
     CREATE INDEX IF NOT EXISTS questions_topic ON questions (topic);
 
     -- ประวัติการเปลี่ยนกฎ: กฎเก่าชุดไหนถูกแทนด้วยกฎใหม่ชุดไหน เพราะอะไร
+    -- refine/conflict มาจากแชท ส่วน edit/retire/restore มาจากหน้าผู้ดูแล
     CREATE TABLE IF NOT EXISTS rule_changes (
       id           SERIAL PRIMARY KEY,
-      kind         TEXT  NOT NULL CHECK (kind IN ('refine', 'conflict')),
+      kind         TEXT  NOT NULL,
       old_rule_ids INT[] NOT NULL,
       new_rule_ids INT[] NOT NULL,
       reason       TEXT  NOT NULL,
       conflict_id  INT REFERENCES conflicts (id),
       user_id      TEXT  NOT NULL,
       created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    -- ตารางที่สร้างไว้ก่อนมีหน้าผู้ดูแลรับได้แค่ refine/conflict ต้องขยายเงื่อนไขให้
+    ALTER TABLE rule_changes DROP CONSTRAINT IF EXISTS rule_changes_kind_check;
+    ALTER TABLE rule_changes ADD CONSTRAINT rule_changes_kind_check
+      CHECK (kind IN ('refine', 'conflict', 'edit', 'retire', 'restore'));
+
+    -- ชื่อที่จะขึ้นในหนังสือเมื่อผู้ดูแลเปลี่ยนกฎจากหน้าเว็บ
+    INSERT INTO users (user_id, display_name) VALUES ('admin', 'ผู้ดูแลระบบ')
+      ON CONFLICT (user_id) DO NOTHING;
+
+    -- ซ่อนจากหนังสืออย่างเดียว บอทยังใช้กฎนี้ตอบ และยังทวงคำถามนี้ตามปกติ
+    ALTER TABLE rules     ADD COLUMN IF NOT EXISTS hidden BOOLEAN NOT NULL DEFAULT false;
+    ALTER TABLE questions ADD COLUMN IF NOT EXISTS hidden BOOLEAN NOT NULL DEFAULT false;
+
+    -- ค่าที่ผู้ดูแลตั้งจากหน้าเว็บ เช่น ส่วนไหนของหนังสือจะแสดง
+    CREATE TABLE IF NOT EXISTS settings (
+      key        TEXT PRIMARY KEY,
+      value      JSONB NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+
+    -- ถังขยะ: ของที่ผู้ดูแลลบถูกย้ายออกจากตารางจริงทันที (บอทและหนังสือจะไม่เห็นอีก)
+    -- แล้วเก็บสำเนาทั้งแถวพร้อมของที่ผูกอยู่ไว้ที่นี่ กู้คืนได้จนกว่าจะกดลบถาวร
+    CREATE TABLE IF NOT EXISTS trash (
+      id         SERIAL PRIMARY KEY,
+      kind       TEXT   NOT NULL CHECK (kind IN ('rule', 'question', 'conflict', 'message')),
+      item_id    BIGINT NOT NULL,
+      label      TEXT   NOT NULL,
+      snapshot   JSONB  NOT NULL,
+      deleted_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+
+    -- ทุกอย่างที่ผู้ดูแลทำจากหน้าเว็บ ไว้ย้อนดูว่าใครเปลี่ยนอะไรเมื่อไหร่
+    CREATE TABLE IF NOT EXISTS admin_log (
+      id         SERIAL PRIMARY KEY,
+      action     TEXT NOT NULL,
+      detail     TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
 
     -- เนื้อหาแต่ละบทที่ AI เรียบเรียงไว้ เก็บไว้ไม่ต้องให้ AI เขียนใหม่ทุกครั้งที่เปิดหนังสือ

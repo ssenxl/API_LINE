@@ -38,5 +38,8 @@ services:
       # ลิงก์สั้นไว้ส่งต่อ เช่น scm-book → https://line-ai-bridge.onrender.com/scm-book
       - key: BOOK_SLUG
         sync: false
+      # รหัสเข้าหน้าผู้ดูแล /admin (แก้ เลิกใช้ กู้คืนกฎ) ไม่ตั้ง = ปิดหน้านี้
+      - key: ADMIN_KEY
+        sync: false
       - key: BOOK_TITLE
         value: สมุดความรู้ SCM
