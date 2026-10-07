@@ -1,4 +1,6 @@
+import { THEME_STYLE, swatch } from './book-scene.js';
 import { BOOK_SECTIONS, STYLE, date, escape, retiredBy, retirementNote } from './book.js';
+import { config } from './config.js';
 
 /**
  * หน้าตาทุกหน้าของ /admin แยกจาก admin.js ที่ดูแลเส้นทางและสิทธิ์
@@ -123,12 +125,14 @@ export function shell({ tab, title, query = {}, body, search = false }) {
 <title>${escape(title)} · ผู้ดูแล</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap" rel="stylesheet">
-<style>${STYLE}${ADMIN_STYLE}</style>
+<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&family=Trirong:wght@500;600&display=swap" rel="stylesheet">
+<style>${STYLE}${THEME_STYLE}${ADMIN_STYLE}</style>
 </head>
 <body class="admin">
+<div class="sky" aria-hidden="true"><div class="dyes"></div></div>
 <nav class="tabs" aria-label="เมนูผู้ดูแล">${nav}<a href="/" target="_blank" rel="noopener">เปิดหนังสือ ↗</a></nav>
 <main>
+  <p class="wordmark">${escape(config.book.brand)}</p>
   <h1>${escape(title)}</h1>
   ${notice(query)}
   ${search ? '<input class="search" id="filter" type="search" placeholder="ค้นหา" aria-label="ค้นหา">' : ''}
@@ -141,8 +145,10 @@ export function shell({ tab, title, query = {}, body, search = false }) {
 
 // ---------- ภาพรวม ----------
 
-function tile(value, label, href) {
-  return `<a class="tile" href="${href}"><strong>${value.toLocaleString('th-TH')}</strong><span>${label}</span></a>`;
+/** ป้ายตัวเลขบนหน้าภาพรวม แต่ละใบมีแถบผ้าคนละสีคนละลายแบบเดียวกับปกบทในหนังสือ */
+function tile([value, label, href], index) {
+  return `<a class="tile" href="${href}"><span ${swatch(index)}></span>
+    <strong>${value.toLocaleString('th-TH')}</strong><span>${label}</span></a>`;
 }
 
 export function overviewPage({ overview, timeline, query }) {
@@ -152,16 +158,20 @@ export function overviewPage({ overview, timeline, query }) {
 
   const body = `
   <section class="tiles">
-    ${tile(c.rules_active, 'กฎที่ใช้อยู่', '/admin/rules')}
-    ${tile(c.rules_retired, 'กฎที่เลิกใช้', '/admin/rules#retired')}
-    ${tile(c.rules_hidden, 'กฎที่ซ่อนจากหนังสือ', '/admin/rules')}
-    ${tile(c.questions_open, 'คำถามค้าง', '/admin/questions')}
-    ${tile(c.questions_answered, 'คำถามที่ได้คำตอบ', '/admin/questions?status=answered')}
-    ${tile(c.conflicts_open, 'ข้อขัดแย้งรอคำตอบ', '/admin/conflicts')}
-    ${tile(c.users, 'ผู้ใช้', '/admin/chats')}
-    ${tile(c.messages, 'ข้อความแชท', '/admin/chats')}
-    ${tile(c.voices, `ข้อความเสียง (${minutes} นาที)`, '/admin/chats')}
-    ${tile(c.trash, 'ในถังขยะ', '/admin/trash')}
+    ${[
+      [c.rules_active, 'กฎที่ใช้อยู่', '/admin/rules'],
+      [c.rules_retired, 'กฎที่เลิกใช้', '/admin/rules#retired'],
+      [c.rules_hidden, 'กฎที่ซ่อนจากหนังสือ', '/admin/rules'],
+      [c.questions_open, 'คำถามค้าง', '/admin/questions'],
+      [c.questions_answered, 'คำถามที่ได้คำตอบ', '/admin/questions?status=answered'],
+      [c.conflicts_open, 'ข้อขัดแย้งรอคำตอบ', '/admin/conflicts'],
+      [c.users, 'ผู้ใช้', '/admin/chats'],
+      [c.messages, 'ข้อความแชท', '/admin/chats'],
+      [c.voices, `ข้อความเสียง (${minutes} นาที)`, '/admin/chats'],
+      [c.trash, 'ในถังขยะ', '/admin/trash'],
+    ]
+      .map(tile)
+      .join('')}
   </section>
 
   <section class="panel">
@@ -620,12 +630,20 @@ const ADMIN_STYLE = `
   :root:not([data-theme="light"]) { --danger: #f08a80; --danger-soft: #3d1f1c; }
 }
 :root[data-theme="dark"] { --danger: #f08a80; --danger-soft: #3d1f1c; }
-.admin main { max-width: 880px; padding-top: 24px; }
-.admin h1 { font-size: 1.7rem; margin-bottom: 12px; }
-.admin h2 { font-size: 1.25rem; }
+/* พื้นหลังน้ำย้อมชุดเดียวกับหนังสือ ตรึงไว้หลังเนื้อหาทั้งหน้า */
+.admin .sky { position: fixed; inset: 0; z-index: -1; overflow: hidden; }
+.admin main { max-width: 880px; padding-top: 28px; }
+.admin h1 { font-size: 1.9rem; margin-bottom: 14px; }
+.admin h2 { font-size: 1.3rem; }
 .tabs {
   position: sticky; top: 0; z-index: 2; display: flex; gap: 4px; overflow-x: auto;
-  padding: 8px 16px; background: var(--paper); border-bottom: 1px solid var(--line);
+  padding: 8px 16px; background: var(--glass); border-bottom: 1px solid var(--glass-line);
+  -webkit-backdrop-filter: blur(18px) saturate(1.3); backdrop-filter: blur(18px) saturate(1.3);
+}
+/* แผ่นเนื้อหาทุกแบบเป็นแก้วทึบลอยเหนือพื้นหลัง ไม่เบลอฉากหลังจริงเพราะหน้ายาวและมีหลายร้อยชิ้น */
+.item, .panel, .tile, .bubble, .admin .rule {
+  background: var(--glass-dense); border-color: var(--glass-line);
+  box-shadow: 0 18px 40px -30px var(--glass-shadow);
 }
 .tabs a, .filters a {
   flex: none; padding: 4px 12px; border-radius: 999px; text-decoration: none; color: var(--muted);
@@ -635,9 +653,10 @@ const ADMIN_STYLE = `
 .filters { display: flex; flex-wrap: wrap; gap: 4px; margin: 8px 0 12px; }
 .flash { background: var(--ok-soft); color: var(--ok); border-radius: 12px; padding: 12px 16px; margin-bottom: 16px; }
 .flash.bad { background: var(--danger-soft); color: var(--danger); }
-.search {
-  position: sticky; top: 56px; z-index: 1; margin-bottom: 8px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, .08);
+.admin .search {
+  position: sticky; top: 56px; z-index: 1; margin-bottom: 8px; border-radius: 999px; padding: 9px 18px;
+  background: var(--glass-dense); border-color: var(--glass-line);
+  box-shadow: 0 10px 30px -18px var(--glass-shadow);
 }
 .topic { margin-top: 32px; }
 .topic > h2 { margin-bottom: 4px; }
@@ -665,7 +684,7 @@ input:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: 
 textarea { resize: vertical; line-height: 1.6; }
 .btn {
   justify-self: start; font: inherit; font-size: .92rem; font-weight: 600; cursor: pointer;
-  border: 0; border-radius: 8px; padding: 6px 16px;
+  border: 0; border-radius: 999px; padding: 6px 18px;
   background: var(--accent); color: var(--paper);
 }
 .btn.danger { background: var(--danger); }
@@ -677,7 +696,9 @@ button.link { font: inherit; font-size: .82rem; background: none; border: 0; pad
   display: grid; gap: 2px; padding: 14px 16px; border-radius: 12px; text-decoration: none;
   background: var(--paper); border: 1px solid var(--line); color: var(--muted); font-size: .9rem;
 }
-.tile strong { font-size: 1.6rem; color: var(--ink); line-height: 1.2; }
+.tile strong { font: 600 1.9rem/1.2 'Trirong', 'Sarabun', serif; color: var(--ink); }
+.tile .swatch { height: 7px; margin-bottom: 8px; border-radius: 999px; box-shadow: none; }
+.tile .swatch::after { content: none; }
 .tile:hover { border-color: var(--accent); }
 .panel { background: var(--paper); border: 1px solid var(--line); border-radius: 12px; padding: 18px 22px; margin-bottom: 20px; }
 .panel h2 { margin-bottom: 10px; }
@@ -696,7 +717,7 @@ button.link { font: inherit; font-size: .82rem; background: none; border: 0; pad
 .chat { display: grid; gap: 10px; }
 .bubble { max-width: 85%; padding: 10px 14px; border-radius: 14px; background: var(--paper); border: 1px solid var(--line); }
 .bubble.user { justify-self: start; border-bottom-left-radius: 4px; }
-.bubble.bot { justify-self: end; background: var(--accent-soft); border-color: transparent; border-bottom-right-radius: 4px; }
+.bubble.bot { justify-self: end; background: var(--accent-soft); border-color: transparent; box-shadow: none; border-bottom-right-radius: 4px; }
 .bubble p { margin-bottom: 4px; }
 .bubble footer { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
 `;

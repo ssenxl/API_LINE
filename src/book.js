@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { SCENE_SCRIPT, SCENE_STYLE, layoutScene, swatch } from './book-scene.js';
+import { SCENE_SCRIPT, SCENE_STYLE, THEME_STYLE, layoutScene, swatch } from './book-scene.js';
 import { CHAPTER_PROMPT_VERSION, writeChapter } from './brain.js';
 import { config } from './config.js';
 import * as kb from './knowledge.js';
@@ -532,9 +532,9 @@ function page(data, chapters) {
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&family=Trirong:wght@500;600&display=swap" rel="stylesheet">
-<style>${STYLE}${SCENE_STYLE}</style>
+<style>${STYLE}${THEME_STYLE}${SCENE_STYLE}</style>
 </head>
-<body class="book">
+<body>
 ${scene({ chapters, labels: data.labels, facts, shortcuts })}
 <div class="scrim" id="scrim"></div>
 <div class="reader" id="reader" tabindex="-1" aria-label="เนื้อหาในเล่ม">

@@ -1,10 +1,13 @@
 /**
  * ฉาก 3 มิติของหน้าหนังสือ
  *
- * การ์ดแก้วลอยเป็นวงรอบก้อนเส้นด้ายสีทอง ลากเพื่อหมุนดูได้รอบทิศ แตะการ์ดแล้วเนื้อหาส่วนนั้นเลื่อนเข้ามาให้อ่าน
+ * การ์ดแก้วลอยเป็นวงรอบคนที่ยืนอยู่กลางฉาก (ร่างคนถักขึ้นจากเส้นด้ายเรืองแสง) ลากเพื่อหมุนดูได้รอบทิศ
+ * แตะการ์ดแล้วเนื้อหาส่วนนั้นเลื่อนเข้ามาให้อ่าน
  * ใช้ CSS 3D กับ canvas ธรรมดา ไม่พึ่งไลบรารีภายนอก หน้าหนังสือจึงยังเป็น HTML ก้อนเดียวเหมือนเดิม
  *
  * ถ้าเบราว์เซอร์ปิด JavaScript หรือสั่งพิมพ์ ฉากนี้จะถูกซ่อน เหลือหนังสือเรียงต่อกันทั้งเล่มแบบเดิม
+ *
+ * ไฟล์นี้ยังเก็บธีม (สี ตัวอักษร พื้นหลังน้ำย้อม ผ้าตัวอย่าง) ที่หน้าผู้ดูแลใช้ร่วมด้วย ทั้งสองหน้าจะได้หน้าตาชุดเดียวกัน
  */
 
 // ---------- จัดวางการ์ด ----------
@@ -88,16 +91,16 @@ export function layoutScene(count) {
 
 // ---------- ผ้าตัวอย่าง ----------
 
-/** สีย้อมธรรมชาติ ไล่จากอ่อนไปเข้มเหมือนผ้าที่จุ่มย้อม แต่ละบทได้สีของตัวเองและใช้ซ้ำเมื่อครบรอบ */
+/** สีย้อมโทนดิจิทัล ไล่จากสว่างไปเข้มเหมือนผ้าที่จุ่มย้อม แต่ละบทได้สีของตัวเองและใช้ซ้ำเมื่อครบรอบ */
 const DYES = [
-  ['#5a72d6', '#1a2868'], // คราม
-  ['#d0647a', '#761c36'], // ครั่ง
-  ['#e9c063', '#a36a14'], // ขมิ้น
-  ['#46ad94', '#0d5548'], // ใบหูกวาง
-  ['#7b66a0', '#2a1f42'], // มะเกลือ
-  ['#de9166', '#8a3b1f'], // ฝาง
-  ['#479fc0', '#114a64'], // น้ำทะเล
-  ['#aea35c', '#544c1f'], // เปลือกประดู่
+  ['#4cc2ff', '#1d4ed8'], // ฟ้าไฟฟ้า
+  ['#3fe0f0', '#0e7490'], // ไซแอน
+  ['#a78bfa', '#5b21b6'], // ม่วงไวโอเลต
+  ['#34d8c0', '#0f766e'], // เขียวทีล
+  ['#e879f9', '#7e22ce'], // ชมพูม่วง
+  ['#6da8ff', '#3730a3'], // น้ำเงินคราม
+  ['#7cecff', '#2563eb'], // ฟ้าอะควา
+  ['#8f96ff', '#6d28d9'], // ครามอมม่วง
 ];
 const WEAVES = 4;
 
@@ -115,55 +118,64 @@ const stroke = (d, width) =>
 
 // ---------- CSS ----------
 
+// โทนสี Digital Transformation: น้ำเงิน ฟ้าไซแอน และม่วง บนพื้นขาวน้ำแข็ง (สว่าง) หรือกรมท่าเข้ม (มืด)
 const DAY = `
-  --bg: #f3ede1; --paper: #fffdf8; --ink: #1c1e33; --muted: #6b6779; --line: #e2d8c4;
-  --accent: #85651c; --accent-soft: #f1e6cc; --warn: #9a5b00; --warn-soft: #fbecd2;
-  --ok: #2f6b3f; --ok-soft: #e1f0e4; --quote: #f6f0e4;
-  --sky-a: #fbf7ee; --sky-b: #e6dac3; --vignette: rgba(120, 96, 52, .2);
-  --dye-1: rgba(52, 76, 178, .34); --dye-2: rgba(190, 74, 98, .26);
-  --dye-3: rgba(222, 170, 70, .4); --dye-4: rgba(40, 140, 122, .24);
-  --glass: rgba(255, 255, 255, .56); --glass-dense: rgba(255, 253, 248, .9); --glass-hi: rgba(255, 255, 255, .92);
-  --glass-line: rgba(255, 255, 255, .9); --glass-shadow: rgba(58, 46, 96, .32);
-  --on-glass: #1c1e33; --on-glass-muted: #575469;
-  --gold: #94701f; --scrim: rgba(40, 34, 60, .3);
-  --thread: 158, 116, 34; --halo: .34; --blend: source-over;
+  color-scheme: light;
+  --bg: #eef3fb; --paper: #ffffff; --ink: #0b1b3a; --muted: #5a6a88; --line: #d5dff0;
+  --accent: #1d4ed8; --accent-soft: #e1ebff; --warn: #9a5b00; --warn-soft: #fff0d2;
+  --ok: #17694a; --ok-soft: #dcf5ea; --quote: #f0f5fd;
+  --sky-a: #f8fbff; --sky-b: #d9e5f8; --vignette: rgba(40, 72, 140, .18);
+  --dye-1: rgba(59, 130, 246, .34); --dye-2: rgba(139, 92, 246, .24);
+  --dye-3: rgba(34, 211, 238, .34); --dye-4: rgba(45, 212, 191, .24);
+  --glass: rgba(255, 255, 255, .58); --glass-dense: rgba(255, 255, 255, .92); --glass-near: rgba(255, 255, 255, .82); --glass-hi: rgba(255, 255, 255, .95);
+  --glass-line: rgba(255, 255, 255, .92); --glass-shadow: rgba(30, 58, 120, .34);
+  --on-glass: #0b1b3a; --on-glass-muted: #4a5a7a;
+  --shine: #1d4ed8; --scrim: rgba(12, 28, 66, .32);
+  --thread: 37, 99, 235; --halo: .22; --blend: source-over;
 `;
 
 const NIGHT = `
-  --bg: #0a0d20; --paper: #141936; --ink: #efe9dc; --muted: #a7a3b6; --line: #2a3055;
-  --accent: #e0c080; --accent-soft: #2d2b3a; --warn: #f0b660; --warn-soft: #3a2c14;
-  --ok: #8fcf9e; --ok-soft: #1e3324; --quote: #1b2145;
-  --sky-a: #121838; --sky-b: #05070f; --vignette: rgba(0, 0, 0, .6);
-  --dye-1: rgba(62, 88, 220, .5); --dye-2: rgba(176, 52, 96, .36);
-  --dye-3: rgba(214, 160, 60, .26); --dye-4: rgba(30, 146, 130, .28);
-  --glass: rgba(20, 25, 56, .56); --glass-dense: rgba(18, 22, 50, .9); --glass-hi: rgba(255, 255, 255, .15);
-  --glass-line: rgba(255, 255, 255, .2); --glass-shadow: rgba(0, 0, 0, .7);
-  --on-glass: #f4efe4; --on-glass-muted: #bab6c8;
-  --gold: #dcb970; --scrim: rgba(2, 3, 10, .5);
-  --thread: 236, 204, 134; --halo: .2; --blend: lighter;
+  color-scheme: dark;
+  --bg: #060b1a; --paper: #0e1730; --ink: #e8f0ff; --muted: #98a8c8; --line: #1f2c4f;
+  --accent: #7dd3fc; --accent-soft: #12284a; --warn: #fbbf24; --warn-soft: #33280f;
+  --ok: #6ee7b7; --ok-soft: #0f2f27; --quote: #111c3a;
+  --sky-a: #0c1b42; --sky-b: #030611; --vignette: rgba(0, 0, 0, .6);
+  --dye-1: rgba(37, 99, 235, .56); --dye-2: rgba(124, 58, 237, .4);
+  --dye-3: rgba(6, 182, 212, .32); --dye-4: rgba(192, 38, 211, .22);
+  --glass: rgba(11, 20, 48, .56); --glass-dense: rgba(9, 16, 40, .9); --glass-near: rgba(9, 16, 40, .8); --glass-hi: rgba(150, 200, 255, .16);
+  --glass-line: rgba(140, 195, 255, .24); --glass-shadow: rgba(0, 0, 0, .7);
+  --on-glass: #eaf2ff; --on-glass-muted: #a9b9d9;
+  --shine: #67e8f9; --scrim: rgba(1, 3, 12, .52);
+  --thread: 103, 232, 249; --halo: .2; --blend: lighter;
 `;
 
 const sizes = Object.entries(SIZE)
   .map(([kind, { w, h }]) => `.is-${kind} { --w: ${w}px; --h: ${h}px; }`)
   .join('\n');
 
-export const SCENE_STYLE = `
-/* ---------- ธีมของหนังสือ: ผ้าไหมดิบ (สว่าง) กับครามกลางคืน (มืด) ---------- */
+/**
+ * ธีมที่ใช้ร่วมกันทั้งหน้าหนังสือและหน้าผู้ดูแล: สี ตัวอักษร พื้นหลังน้ำย้อม และชิ้นผ้าตัวอย่าง
+ * ต้องวางต่อจาก STYLE ของ book.js เพราะทับค่าสีพื้นฐานในนั้น
+ */
+export const THEME_STYLE = `
+/* ---------- ธีม: ขาวน้ำแข็ง (สว่าง) กับกรมท่าเข้ม (มืด) ---------- */
 :root { ${DAY} }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) { ${NIGHT} }
 }
 :root[data-theme="dark"] { ${NIGHT} }
 
-.book h1, .book h2, .wordmark { font-family: 'Trirong', 'Sarabun', serif; font-weight: 600; }
-.book .eyebrow { letter-spacing: .12em; }
-.scene, .scrim, .bar { display: none; }
+h1, h2, .wordmark { font-family: 'Trirong', 'Sarabun', serif; font-weight: 600; }
+.eyebrow { letter-spacing: .12em; }
+.wordmark { margin: 0; font-size: .92rem; font-weight: 500; letter-spacing: .52em; text-transform: uppercase; color: var(--shine); }
+.wordmark::after {
+  content: ''; display: block; width: 46px; height: 1px; margin: 10px 0 12px;
+  background: linear-gradient(90deg, var(--shine), transparent);
+}
 
-/* ---------- ฉาก ---------- */
-.scene { position: fixed; inset: 0; overflow: hidden; color: var(--on-glass); }
-.sky, .threads, .stage { position: absolute; inset: 0; }
+/* ---------- พื้นหลังน้ำย้อม ---------- */
 .sky { background: radial-gradient(130% 100% at 50% 0%, var(--sky-a), var(--sky-b) 80%); }
-/* น้ำย้อมสี่สีซึมเข้าหากัน ขยับตามมุมที่หมุนฉากเล็กน้อยให้รู้สึกว่ามีความลึก */
+/* น้ำย้อมสี่สีซึมเข้าหากัน */
 .dyes {
   position: absolute; inset: -12%;
   background:
@@ -180,48 +192,8 @@ export const SCENE_STYLE = `
     repeating-linear-gradient(90deg, rgba(0, 0, 0, .03) 0 1px, transparent 1px 4px),
     radial-gradient(120% 110% at 50% 46%, transparent 52%, var(--vignette));
 }
-.threads { width: 100%; height: 100%; pointer-events: none; }
-.stage {
-  perspective: ${PERSPECTIVE}px; perspective-origin: 50% 52%;
-  touch-action: none; cursor: grab;
-  -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent;
-  animation: arrive 1.4s ease-out backwards;
-}
-.stage.dragging { cursor: grabbing; }
-@keyframes arrive { from { opacity: 0; } }
-.world { position: absolute; left: 50%; top: 52%; transform-style: preserve-3d; }
 
-/* ---------- การ์ดแก้ว ---------- */
-${sizes}
-.card {
-  position: absolute; left: calc(var(--w) / -2); top: calc(var(--h) / -2);
-  width: var(--w); height: var(--h); padding: 12px; border-radius: 26px;
-  color: var(--on-glass); text-decoration: none; font-size: 14px; line-height: 1.5;
-  background: linear-gradient(150deg, var(--glass-hi), transparent 38%) var(--glass);
-  border: 1px solid var(--glass-line);
-  box-shadow: 0 28px 60px -28px var(--glass-shadow);
-  transform: rotateY(var(--lon)) rotateX(var(--lat)) translateZ(calc(var(--r) + var(--lift, 0px)))
-    rotateX(calc(var(--tilt) - var(--lat)));
-  transition: transform .45s cubic-bezier(.2, .8, .2, 1), filter .4s, border-color .3s, background-color .4s;
-  -webkit-user-drag: none;
-}
-.card:focus-visible { outline: 2px solid var(--gold); outline-offset: 4px; }
-/* การ์ดที่หันหลังให้กล้อง: กลับด้านเนื้อหาให้อ่านจากข้างหลังได้ แล้วเบลอให้ดูอยู่ไกล */
-.card.back .face { transform: scaleX(-1); }
-.card.far { filter: blur(2.4px); }
-.dense .card.far { visibility: hidden; }
-/* การ์ดที่หันมาด้านหน้าต้องอ่านออกแม้มีเส้นด้ายอยู่ข้างหลัง: จอสัมผัสใช้แก้วทึบขึ้น (เบา ไม่กินแรงเครื่อง)
-   ส่วนเครื่องที่ใช้เมาส์เบลอฉากหลังจริง ๆ */
-.card.near { background-color: var(--glass-dense); }
-@media (hover: hover) and (pointer: fine) {
-  .card.near {
-    background-color: var(--glass);
-    -webkit-backdrop-filter: blur(14px) saturate(1.3); backdrop-filter: blur(14px) saturate(1.3);
-  }
-  .card.near:hover { --lift: 26px; border-color: var(--gold); }
-}
-.face { display: flex; flex-direction: column; height: 100%; min-width: 0; }
-
+/* ---------- ผ้าตัวอย่าง ---------- */
 .swatch {
   position: relative; display: block; flex: none; overflow: hidden; border-radius: 16px;
   color: #fff; text-shadow: 0 2px 10px rgba(0, 0, 0, .4);
@@ -245,6 +217,58 @@ ${sizes}
 .weave-2 { --weave: ${tile(8, 8, stroke('M-2 6l8-8M2 10l8-8', 1.8))}; } /* ลายสอง */
 .weave-3 { --weave: ${tile(16, 8, stroke('M0 8l8-8 8 8M0 4l4-4M12 0l4 4', 1.6))}; } /* ลายก้างปลา */
 
+`;
+
+export const SCENE_STYLE = `
+.scene, .scrim, .bar { display: none; }
+
+/* ---------- ฉาก ---------- */
+.scene { position: fixed; inset: 0; overflow: hidden; color: var(--on-glass); }
+.sky, .threads, .stage { position: absolute; inset: 0; }
+.threads { width: 100%; height: 100%; pointer-events: none; }
+.stage {
+  perspective: ${PERSPECTIVE}px; perspective-origin: 50% 52%;
+  touch-action: none; cursor: grab;
+  -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent;
+  animation: arrive 1.4s ease-out backwards;
+}
+.stage.dragging { cursor: grabbing; }
+@keyframes arrive { from { opacity: 0; } }
+.world { position: absolute; left: 50%; top: 52%; transform-style: preserve-3d; }
+/* คนที่ยืนอยู่กลางฉาก สคริปต์วาดและหมุนให้หันเข้าหากล้องเอง */
+.figure { position: absolute; pointer-events: none; }
+
+/* ---------- การ์ดแก้ว ---------- */
+${sizes}
+.card {
+  position: absolute; left: calc(var(--w) / -2); top: calc(var(--h) / -2);
+  width: var(--w); height: var(--h); padding: 12px; border-radius: 26px;
+  color: var(--on-glass); text-decoration: none; font-size: 14px; line-height: 1.5;
+  background: linear-gradient(150deg, var(--glass-hi), transparent 38%) var(--glass);
+  border: 1px solid var(--glass-line);
+  box-shadow: 0 28px 60px -28px var(--glass-shadow);
+  transform: rotateY(var(--lon)) rotateX(var(--lat)) translateZ(calc(var(--r) + var(--lift, 0px)))
+    rotateX(calc(var(--tilt) - var(--lat)));
+  transition: transform .45s cubic-bezier(.2, .8, .2, 1), filter .4s, border-color .3s, background-color .4s;
+  -webkit-user-drag: none;
+}
+.card:focus-visible { outline: 2px solid var(--shine); outline-offset: 4px; }
+/* การ์ดที่หันหลังให้กล้อง: กลับด้านเนื้อหาให้อ่านจากข้างหลังได้ แล้วเบลอให้ดูอยู่ไกล */
+.card.back .face { transform: scaleX(-1); }
+.card.far { filter: blur(2.4px); }
+.dense .card.far { visibility: hidden; }
+/* การ์ดที่หันมาด้านหน้าต้องอ่านออกแม้มีคนยืนอยู่ข้างหลัง: จอสัมผัสใช้แก้วทึบขึ้นแต่ยังเห็นคนราง ๆ (เบา ไม่กินแรงเครื่อง)
+   ส่วนเครื่องที่ใช้เมาส์เบลอฉากหลังจริง ๆ */
+.card.near { background-color: var(--glass-near); }
+@media (hover: hover) and (pointer: fine) {
+  .card.near {
+    background-color: var(--glass);
+    -webkit-backdrop-filter: blur(14px) saturate(1.3); backdrop-filter: blur(14px) saturate(1.3);
+  }
+  .card.near:hover { --lift: 26px; border-color: var(--shine); }
+}
+.face { display: flex; flex-direction: column; height: 100%; min-width: 0; }
+
 .is-chapter .swatch { height: 138px; }
 .swatch .no { position: absolute; left: 16px; bottom: 6px; font: 600 56px/1 'Trirong', serif; }
 .swatch .tag {
@@ -254,7 +278,7 @@ ${sizes}
 }
 .kicker {
   display: block; margin: 14px 6px 2px;
-  font-size: 11.5px; font-weight: 600; letter-spacing: .16em; color: var(--gold);
+  font-size: 11.5px; font-weight: 600; letter-spacing: .16em; color: var(--shine);
 }
 .is-chapter .name {
   margin: 0 6px; font: 600 20px/1.35 'Trirong', 'Sarabun', serif; max-height: calc(2.7em - 2px);
@@ -269,7 +293,7 @@ ${sizes}
 .more {
   display: flex; justify-content: space-between;
   margin: auto 6px 2px; padding-top: 9px; border-top: 1px solid var(--glass-line);
-  font-size: 12.5px; font-weight: 600; letter-spacing: .08em; color: var(--gold);
+  font-size: 12.5px; font-weight: 600; letter-spacing: .08em; color: var(--shine);
 }
 .sub { display: block; font-size: 12px; color: var(--on-glass-muted); }
 
@@ -285,7 +309,7 @@ ${sizes}
 .is-rule .name { display: block; font-size: 14.5px; font-weight: 600; }
 
 .is-link { padding: 16px 18px; }
-.big { display: flex; align-items: flex-end; height: 44px; font: 600 42px/1 'Trirong', serif; color: var(--gold); }
+.big { display: flex; align-items: flex-end; height: 44px; font: 600 42px/1 'Trirong', serif; color: var(--shine); }
 .big svg { width: 34px; height: 34px; fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
 .is-link .name { display: block; margin-top: auto; font-size: 14.5px; font-weight: 600; line-height: 1.35; }
 
@@ -301,11 +325,6 @@ ${sizes}
 .top h1, .facts { grid-column: 1 / -1; }
 /* ชื่อเล่มต้องยังอ่านออกตอนการ์ดหมุนมาอยู่ข้างหลัง */
 .wordmark, .hud h1, .facts { text-shadow: 0 0 5px var(--sky-b), 0 1px 20px var(--sky-b); }
-.wordmark { margin: 0; font-size: .92rem; font-weight: 500; letter-spacing: .52em; text-transform: uppercase; color: var(--gold); }
-.wordmark::after {
-  content: ''; display: block; width: 46px; height: 1px; margin: 10px 0 12px;
-  background: linear-gradient(90deg, var(--gold), transparent);
-}
 .hud h1 { font-size: clamp(1.45rem, 3.2vw, 2.2rem); }
 .facts { margin: 6px 0 0; font-size: .9rem; color: var(--on-glass-muted); }
 .actions { display: flex; gap: 8px; }
@@ -315,7 +334,7 @@ ${sizes}
   background: var(--glass); border: 1px solid var(--glass-line);
   -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
 }
-.actions a:hover { border-color: var(--gold); }
+.actions a:hover { border-color: var(--shine); }
 .hint { align-self: center; margin: 0; color: var(--on-glass-muted); transition: opacity .8s; }
 .hint.gone { opacity: 0; }
 
@@ -354,6 +373,8 @@ ${sizes}
   .js .sheet { flex: 1; overflow-y: auto; overscroll-behavior: contain; }
   .js .sheet main { max-width: none; padding: 28px 32px 96px; }
   .js .reader[data-view="one"] [data-sec]:not(.on) { display: none; }
+  /* เปิดจากลิงก์ตรงแล้วเบราว์เซอร์เลื่อนไปที่หัวข้อเอง เว้นระยะไว้ไม่ให้ชิดแถบด้านบน */
+  .js .sheet [data-sec] { scroll-margin-top: 28px; }
   .js .reader[data-view="one"] .chapter { margin-top: 0; padding-top: 0; border-top: 0; }
 
   /* จอกว้าง: เลื่อนฉากไปทางซ้ายให้ยังเห็นการ์ดอยู่ข้างแผ่นอ่าน */
@@ -421,7 +442,6 @@ function sceneClient() {
   let dirty = true;
   let raf = 0;
   let last = 0;
-  let ballTurn = 0;
 
   const cards = [...world.querySelectorAll('.card')].map((el) => {
     const lon = Number(el.dataset.lon);
@@ -445,10 +465,16 @@ function sceneClient() {
     const h = (sample && sample.offsetHeight) || 372;
     // บทมีหลายแถวก็ย่อลงให้เห็นครบทุกแถว จะได้เลือกบทไหนก็ได้โดยไม่ต้องเงยหรือก้มฉากก่อน
     const tall = chapterRows * h + (chapterRows - 1) * 40;
-    fitScale = clamp(Math.min((width * 0.66) / w, (height * 0.47) / h, (height * 0.8) / tall), 0.6, 1.2);
+    // จอแคบย่อลงอีกนิด จะได้เห็นการ์ดสองใบที่ขนาบคนกลางฉากมากขึ้น
+    const share = width < 640 ? 0.58 : 0.66;
+    fitScale = clamp(Math.min((width * share) / w, (height * 0.47) / h, (height * 0.8) / tall), 0.6, 1.2);
     dpr = Math.min(window.devicePixelRatio || 1, 2);
     canvas.width = Math.round(width * dpr);
     canvas.height = Math.round(height * dpr);
+    // แผ่นใสของตัวคนถูกย่อตามระยะกล้อง จึงใช้จุดภาพเท่าที่จะเห็นจริงบนจอ (เผื่อซูมเข้าอีกหน่อย)
+    figureScale = clamp((dpr * 1.25 * P) / (R + P / fitScale), 0.4, 2.5);
+    figure.width = Math.round(PLANE.w * figureScale);
+    figure.height = Math.round(PLANE.h * figureScale);
     touch();
   }
 
@@ -517,10 +543,8 @@ function sceneClient() {
       }
     }
 
-    if (!still.matches && !reading) {
-      ballTurn += dt * 0.14;
-      moving = dirty = true;
-    }
+    // แถบแสงบนตัวคนและจุดแสงบนเส้นด้ายขยับอยู่ตลอด จึงต้องวาดใหม่ทุกเฟรม
+    if (!still.matches && !reading) moving = dirty = true;
     if (dirty) render(now);
     if (moving) kick();
   }
@@ -553,28 +577,16 @@ function sceneClient() {
     }
 
     dyes.style.transform = `translate3d(${(Math.sin(view.yaw * RAD) * 4).toFixed(2)}%, ${(view.pitch * 0.05).toFixed(2)}%, 0)`;
-    drawThreads(depth, now);
+    draw(depth, now);
   }
 
-  // ---------- เส้นด้าย ----------
+  // ---------- เส้นในฉาก: คนยืนกลางฉาก วงแหวนที่พื้น และด้ายที่ร้อยการ์ด ----------
 
   const ctx = canvas.getContext('2d');
-  const STEPS = 72;
   const BUCKETS = 6;
-  const circle = [];
-  for (let i = 0; i <= STEPS; i++) {
-    circle.push(Math.cos((i / STEPS) * 2 * Math.PI), Math.sin((i / STEPS) * 2 * Math.PI));
-  }
   const buckets = Array.from({ length: BUCKETS }, () => []);
-  const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
-  const scale = (a, k) => [a[0] * k, a[1] * k, a[2] * k];
   const rotX = (a) => [1, 0, 0, 0, Math.cos(a), -Math.sin(a), 0, Math.sin(a), Math.cos(a)];
   const rotY = (a) => [Math.cos(a), 0, Math.sin(a), 0, 1, 0, -Math.sin(a), 0, Math.cos(a)];
-  const apply = (m, v) => [
-    m[0] * v[0] + m[1] * v[1] + m[2] * v[2],
-    m[3] * v[0] + m[4] * v[1] + m[5] * v[2],
-    m[6] * v[0] + m[7] * v[1] + m[8] * v[2],
-  ];
   const mul = (a, b) => {
     const out = [];
     for (let r = 0; r < 3; r++) {
@@ -583,34 +595,133 @@ function sceneClient() {
     return out;
   };
 
-  // เส้นด้ายแต่ละเส้นคือวงกลม: จุดบนเส้น = c + u·cos t + v·sin t
-  // ก้อนด้ายกลางฉาก: พันเป็นมัด มัดละหลายเส้นขนานกัน แกนของแต่ละมัดกระจายรอบลูกไม่ให้ซ้อนกัน
-  const ballRadius = R * 0.56;
-  const ball = [];
-  const BANDS = 7;
-  for (let b = 0; b < BANDS; b++) {
-    const polar = Math.acos(1 - (b + 0.5) / BANDS);
-    const around = b * 2.39996;
-    const axis = [Math.sin(polar) * Math.cos(around), Math.cos(polar), Math.sin(polar) * Math.sin(around)];
-    const side = cross(axis, Math.abs(axis[1]) < 0.9 ? [0, 1, 0] : [1, 0, 0]);
-    const u = scale(side, 1 / Math.hypot(side[0], side[1], side[2]));
-    const v = cross(axis, u);
-    for (let s = -1.5; s <= 1.5; s++) {
-      const offset = s * 0.055 * ballRadius;
-      const r = Math.sqrt(ballRadius * ballRadius - offset * offset);
-      ball.push({ c: scale(axis, offset), u: scale(u, r), v: scale(v, r) });
+  /** เส้นวงรีแนวนอน เก็บเป็นจุด x, y, z เรียงต่อกัน จุดสุดท้ายซ้ำจุดแรกเพื่อปิดวง */
+  function loop(cx, y, cz, rx, rz, n) {
+    const pts = new Float32Array((n + 1) * 3);
+    for (let i = 0; i <= n; i++) {
+      const t = (i / n) * 2 * Math.PI;
+      pts[i * 3] = cx + rx * Math.cos(t);
+      pts[i * 3 + 1] = y;
+      pts[i * 3 + 2] = cz + rz * Math.sin(t);
+    }
+    return pts;
+  }
+
+  // ด้ายที่ร้อยการ์ดแต่ละแถวไว้ด้วยกัน
+  const lats = (stage.dataset.rings || '').split(',').filter(Boolean).map(Number);
+  const threads = lats.map((lat) => {
+    const r = R * 0.992 * Math.cos(lat * RAD);
+    const y = -R * 0.992 * Math.sin(lat * RAD);
+    return { r, y, pts: loop(0, y, 0, r, r, 96) };
+  });
+
+  // ความสูงของคนวัดจากแถวการ์ด: ศีรษะอยู่ใต้แถวกฎล่าสุดพอดี (ไม่ให้การ์ดแถวบนบังหน้า) เท้าอยู่ต่ำกว่าแถวทางลัด
+  const rowY = (selector) =>
+    [...world.querySelectorAll(selector)].map((el) => -R * Math.sin(Number(el.dataset.lat) * RAD));
+  const chapterY = rowY('.is-chapter');
+  const ruleY = rowY('.is-rule');
+  const linkY = rowY('.is-link');
+  let HEAD = -R * 0.62;
+  let FEET = R * 0.62;
+  if (chapterY.length) {
+    HEAD = ruleY.length ? ruleY[0] + 24 : Math.min(...chapterY) - 256;
+    FEET = linkY.length ? linkY[0] + 110 : Math.max(...chapterY) + 246;
+  }
+  const TALL = FEET - HEAD;
+  const MID = (HEAD + FEET) / 2;
+
+  // รูปร่างคน: แต่ละส่วนคือท่อที่หน้าตัดเป็นวงรี ไล่จากบนลงล่าง ทุกค่าเป็นสัดส่วนของความสูง
+  // [สูงจากพื้น, ห่างจากกลางตัว, เยื้องไปข้างหน้า, กว้างครึ่งหนึ่ง, หนาครึ่งหนึ่ง]
+  const TRUNK = [
+    [0.998, 0, 0, 0.008, 0.009],
+    [0.99, 0, 0, 0.026, 0.03],
+    [0.974, 0, 0, 0.043, 0.05],
+    [0.95, 0, 0, 0.055, 0.063],
+    [0.93, 0, 0, 0.057, 0.066],
+    [0.905, 0, 0.002, 0.053, 0.062],
+    [0.885, 0, 0.004, 0.044, 0.052],
+    [0.872, 0, 0.004, 0.033, 0.038], // คาง
+    [0.86, 0, 0, 0.028, 0.031], // คอ
+    [0.846, 0, 0, 0.032, 0.034],
+    [0.836, 0, 0, 0.06, 0.04], // บ่า
+    [0.824, 0, 0, 0.09, 0.047], // ไหล่
+    [0.79, 0, 0.004, 0.096, 0.06], // อก
+    [0.73, 0, 0.004, 0.09, 0.062],
+    [0.66, 0, 0, 0.077, 0.052], // เอว
+    [0.61, 0, 0, 0.078, 0.053],
+    [0.555, 0, 0, 0.09, 0.061], // สะโพก
+    [0.51, 0, 0, 0.094, 0.063],
+    [0.48, 0, 0, 0.086, 0.058],
+    [0.466, 0, 0, 0.06, 0.048],
+  ];
+  const LEG = [
+    [0.49, 0.047, 0, 0.044, 0.05],
+    [0.4, 0.05, 0, 0.041, 0.047],
+    [0.31, 0.051, 0, 0.032, 0.036],
+    [0.27, 0.051, 0.002, 0.03, 0.034], // เข่า
+    [0.2, 0.052, -0.004, 0.032, 0.038], // น่อง
+    [0.11, 0.054, -0.002, 0.023, 0.027],
+    [0.05, 0.055, 0, 0.019, 0.023], // ข้อเท้า
+    [0.028, 0.056, 0.016, 0.023, 0.042], // หลังเท้า
+    [0.004, 0.057, 0.024, 0.027, 0.056], // ฝ่าเท้า
+  ];
+  const ARM = [
+    [0.826, 0.106, 0, 0.022, 0.03],
+    [0.8, 0.116, 0, 0.027, 0.031], // หัวไหล่
+    [0.71, 0.126, 0, 0.024, 0.027],
+    [0.64, 0.132, -0.002, 0.021, 0.023], // ศอก
+    [0.56, 0.138, 0.006, 0.02, 0.021],
+    [0.49, 0.143, 0.014, 0.015, 0.017], // ข้อมือ
+    [0.455, 0.145, 0.017, 0.014, 0.024], // มือ
+    [0.41, 0.146, 0.019, 0.009, 0.017],
+  ];
+  const SLICE = 0.0125;
+  const person = []; // เส้นทั้งหมดของตัวคน
+  const slices = []; // เฉพาะเส้นแนวนอน พร้อมความสูง ใช้กับแถบแสงที่กวาดขึ้นตามตัว
+
+  /** สร้างท่อหนึ่งส่วนของร่างกาย side = -1 ซ้าย, 1 ขวา, 0 กลางตัว */
+  function limb(keys, side, n, ribs) {
+    const rings = [];
+    for (let y = keys[0][0]; y > keys[keys.length - 1][0] - SLICE / 2; y -= SLICE) {
+      let k = 1;
+      while (k < keys.length - 1 && keys[k][0] > y) k++;
+      const a = keys[k - 1];
+      const b = keys[k];
+      const f = clamp((a[0] - y) / (a[0] - b[0]), 0, 1);
+      const at = (i) => (a[i] + (b[i] - a[i]) * f) * TALL;
+      const pts = loop(side * at(1), FEET - y * TALL, at(2), at(3), at(4), n);
+      rings.push(pts);
+      slices.push({ y, pts });
+    }
+    person.push(...rings);
+    // เส้นตั้งเชื่อมวงแต่ละชั้น ให้เห็นเป็นผิวของตัวคน
+    for (let r = 0; r < ribs; r++) {
+      const i = Math.round((r / ribs) * n) * 3;
+      const rib = new Float32Array(rings.length * 3);
+      rings.forEach((ring, j) => rib.set(ring.subarray(i, i + 3), j * 3));
+      person.push(rib);
     }
   }
-  // ด้ายที่ร้อยการ์ดแต่ละแถวไว้ด้วยกัน
-  const rings = (stage.dataset.rings || '')
-    .split(',')
-    .filter(Boolean)
-    .map((lat) => {
-      const r = R * 0.992 * Math.cos(lat * RAD);
-      return { c: [0, -R * 0.992 * Math.sin(lat * RAD), 0], u: [r, 0, 0], v: [0, 0, r] };
-    });
+  limb(TRUNK, 0, 28, 8);
+  for (const side of [-1, 1]) {
+    limb(LEG, side, 14, 4);
+    limb(ARM, side, 12, 4);
+  }
+  // วงแหวนบนพื้นใต้เท้า
+  const floor = [0.16, 0.22, 0.28].map((r) => loop(0, FEET, 0, r * TALL, r * TALL, 96));
 
-  let tone = { rgb: '236, 204, 134', halo: 0.2, blend: 'lighter' };
+  // ตัวคนวาดลงบนแผ่นใสที่ตั้งอยู่กลางฉากและหันเข้าหากล้องเสมอ
+  // เบราว์เซอร์จึงเรียงให้เองว่าการ์ดใบไหนอยู่หน้าคน ใบไหนอยู่หลังคน
+  const PLANE = { w: TALL * 0.62, h: TALL * 1.2 };
+  const figure = document.createElement('canvas');
+  figure.className = 'figure';
+  figure.setAttribute('aria-hidden', 'true');
+  figure.style.cssText = `width:${PLANE.w}px;height:${PLANE.h}px;left:${-PLANE.w / 2}px;top:${MID - PLANE.h / 2}px`;
+  world.prepend(figure);
+  const pen = figure.getContext('2d');
+  let figureScale = 1; // จุดภาพของแผ่นใสต่อหนึ่งหน่วยของฉาก
+
+  let tone = { rgb: '103, 232, 249', halo: 0.2, blend: 'lighter' };
   function readTone() {
     const style = getComputedStyle(root);
     tone = {
@@ -621,93 +732,117 @@ function sceneClient() {
     touch();
   }
 
-  function drawThreads(depth, now) {
+  /**
+   * วาดเส้น 3 มิติลงบนผืนผ้าใบ เส้นที่อยู่ใกล้กล้องสว่างและหนากว่าเส้นที่อยู่ไกล
+   * frame บอกว่าผืนผ้าใบนี้วางอยู่ตรงไหน: จุดกลาง (cx, cy), อัตราย่อ s และ px = หนึ่งจุดบนจอเท่ากับกี่หน่วยของผืนนี้
+   */
+  function strokeLines(g, lines, m, frame, zFar, zNear, look) {
+    for (const bucket of buckets) bucket.length = 0;
+    for (const pts of lines) {
+      let px = 0;
+      let py = 0;
+      let pz = 0;
+      for (let i = 0; i < pts.length; i += 3) {
+        const z = m[6] * pts[i] + m[7] * pts[i + 1] + m[8] * pts[i + 2];
+        const k = (P / (P - z - frame.depth)) * frame.s;
+        const x = frame.cx + (m[0] * pts[i] + m[1] * pts[i + 1] + m[2] * pts[i + 2]) * k;
+        const y = frame.cy + (m[3] * pts[i] + m[4] * pts[i + 1] + m[5] * pts[i + 2]) * k;
+        if (i > 0) {
+          const b = clamp(Math.floor((((pz + z) / 2 - zFar) / (zNear - zFar)) * BUCKETS), 0, BUCKETS - 1);
+          buckets[b].push(px, py, x, y);
+        }
+        px = x;
+        py = y;
+        pz = z;
+      }
+    }
+    for (let b = 0; b < BUCKETS; b++) {
+      const t = b / (BUCKETS - 1);
+      const segments = buckets[b];
+      g.globalAlpha = look.far + (look.near - look.far) * t * t;
+      g.lineWidth = (look.thin + (look.thick - look.thin) * t) * frame.px;
+      g.beginPath();
+      for (let i = 0; i < segments.length; i += 4) {
+        g.moveTo(segments[i], segments[i + 1]);
+        g.lineTo(segments[i + 2], segments[i + 3]);
+      }
+      g.stroke();
+    }
+  }
+
+  function draw(depth, now) {
     const ox = world.offsetLeft;
     const oy = world.offsetTop;
     const turn = mul(rotX(view.pitch * RAD), rotY(view.yaw * RAD));
-    const project = (p) => {
-      const k = P / (P - p[2] - depth);
-      return [ox + p[0] * k, oy + p[1] * k];
-    };
+    const back = { cx: ox, cy: oy, s: 1, px: 1, depth };
+    // กลางตัวคนหลังหมุนฉากแล้ว: สูงต่ำ (midY) ใกล้ไกล (midZ) และอัตราย่อ ณ จุดนั้น (k0)
+    const midY = MID * turn[4];
+    const midZ = MID * turn[7];
+    const k0 = P / (P - midZ - depth);
 
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, width, height);
     ctx.globalCompositeOperation = tone.blend;
     ctx.globalAlpha = 1;
+    ctx.lineCap = 'round';
 
-    // แสงเรือง ๆ หลังก้อนด้าย
-    const glowRadius = ballRadius * (P / (P - depth)) * 2.2;
-    const glow = ctx.createRadialGradient(ox, oy, 0, ox, oy, glowRadius);
+    // แสงเรืองหลังตัวคน เป็นวงรีตั้ง
+    const glowRadius = TALL * k0 * 0.56;
+    const glow = ctx.createRadialGradient(0, 0, 0, 0, 0, glowRadius);
     glow.addColorStop(0, `rgba(${tone.rgb}, ${tone.halo})`);
     glow.addColorStop(1, `rgba(${tone.rgb}, 0)`);
+    ctx.save();
+    ctx.translate(ox, oy + midY * k0);
+    ctx.scale(0.6, 1.1);
     ctx.fillStyle = glow;
-    ctx.fillRect(ox - glowRadius, oy - glowRadius, glowRadius * 2, glowRadius * 2);
+    ctx.fillRect(-glowRadius, -glowRadius, glowRadius * 2, glowRadius * 2);
+    ctx.restore();
 
-    ctx.strokeStyle = `rgb(${tone.rgb})`;
-    ctx.lineCap = 'round';
-    weave(rings, turn, R, { far: 0.05, near: 0.42, thin: 0.6, thick: 1 });
-    const ballMatrix = mul(turn, mul(rotX(0.42), rotY(ballTurn)));
-    weave(ball, ballMatrix, ballRadius, { far: 0.1, near: 0.9, thin: 0.6, thick: 1.3 });
+    ctx.strokeStyle = ctx.fillStyle = `rgb(${tone.rgb})`;
+    strokeLines(ctx, threads.map((thread) => thread.pts), turn, back, -R, R, { far: 0.05, near: 0.42, thin: 0.6, thick: 1 });
+    strokeLines(ctx, floor, turn, back, -R, R, { far: 0.1, near: 0.7, thin: 0.6, thick: 1.1 });
 
-    // ประกายแสงวิ่งไปตามเส้นด้าย
+    // จุดแสงวิ่งไปตามด้ายที่ร้อยการ์ด เหมือนข้อมูลที่ไหลอยู่ในสาย
     if (!still.matches) {
-      ctx.fillStyle = `rgb(${tone.rgb})`;
-      for (let i = 0; i < ball.length; i += 4) {
-        const t = now / 2600 + i * 1.7;
-        const s = ball[i];
-        const p = apply(ballMatrix, [
-          s.c[0] + s.u[0] * Math.cos(t) + s.v[0] * Math.sin(t),
-          s.c[1] + s.u[1] * Math.cos(t) + s.v[1] * Math.sin(t),
-          s.c[2] + s.u[2] * Math.cos(t) + s.v[2] * Math.sin(t),
-        ]);
-        if (p[2] < 0) continue;
-        const [x, y] = project(p);
-        ctx.globalAlpha = p[2] / ballRadius;
-        ctx.beginPath();
-        ctx.arc(x, y, 2.2, 0, 2 * Math.PI);
-        ctx.fill();
-      }
+      threads.forEach((thread, i) => {
+        for (const lap of [0, Math.PI]) {
+          const t = now / 3400 + i * 1.9 + lap;
+          const x0 = thread.r * Math.cos(t);
+          const z0 = thread.r * Math.sin(t);
+          const z = turn[6] * x0 + turn[7] * thread.y + turn[8] * z0;
+          if (z < 0) continue;
+          const k = P / (P - z - depth);
+          ctx.globalAlpha = Math.min(1, 0.25 + z / R);
+          ctx.beginPath();
+          ctx.arc(
+            ox + (turn[0] * x0 + turn[1] * thread.y + turn[2] * z0) * k,
+            oy + (turn[3] * x0 + turn[4] * thread.y + turn[5] * z0) * k,
+            2.4,
+            0,
+            2 * Math.PI,
+          );
+          ctx.fill();
+        }
+      });
     }
 
-    function weave(strands, m, radius, look) {
-      for (const bucket of buckets) bucket.length = 0;
-      for (const strand of strands) {
-        const c = apply(m, strand.c);
-        const u = apply(m, strand.u);
-        const v = apply(m, strand.v);
-        let px = 0;
-        let py = 0;
-        let pz = 0;
-        for (let i = 0; i <= STEPS; i++) {
-          const cs = circle[i * 2];
-          const sn = circle[i * 2 + 1];
-          const z = c[2] + u[2] * cs + v[2] * sn;
-          const k = P / (P - z - depth);
-          const x = ox + (c[0] + u[0] * cs + v[0] * sn) * k;
-          const y = oy + (c[1] + u[1] * cs + v[1] * sn) * k;
-          if (i > 0) {
-            const b = clamp(Math.floor(((pz + z) / (4 * radius) + 0.5) * BUCKETS), 0, BUCKETS - 1);
-            buckets[b].push(px, py, x, y);
-          }
-          px = x;
-          py = y;
-          pz = z;
-        }
-      }
-      // ด้ายด้านหน้าสว่างและหนากว่าด้านหลัง
-      for (let b = 0; b < BUCKETS; b++) {
-        const t = b / (BUCKETS - 1);
-        const segments = buckets[b];
-        ctx.globalAlpha = look.far + (look.near - look.far) * t * t;
-        ctx.lineWidth = look.thin + (look.thick - look.thin) * t;
-        ctx.beginPath();
-        for (let i = 0; i < segments.length; i += 4) {
-          ctx.moveTo(segments[i], segments[i + 1]);
-          ctx.lineTo(segments[i + 2], segments[i + 3]);
-        }
-        ctx.stroke();
-      }
+    // ตัวคน
+    const plane = { cx: PLANE.w / 2, cy: PLANE.h / 2 - midY, s: 1 / k0, px: 1 / k0, depth };
+    // มองจากมุมสูงหรือมุมต่ำ ศีรษะกับเท้าจะอยู่ใกล้ไกลจากกล้องต่างกันมากขึ้น
+    const reach = TALL * (0.09 + 0.5 * Math.abs(Math.sin(view.pitch * RAD)));
+    pen.setTransform(figureScale, 0, 0, figureScale, 0, 0);
+    pen.clearRect(0, 0, PLANE.w, PLANE.h);
+    pen.globalCompositeOperation = tone.blend;
+    pen.lineCap = 'round';
+    pen.strokeStyle = `rgb(${tone.rgb})`;
+    strokeLines(pen, person, turn, plane, midZ - reach, midZ + reach, { far: 0.1, near: 0.8, thin: 0.5, thick: 1.15 });
+    if (!still.matches) {
+      // แถบแสงกวาดจากเท้าขึ้นศีรษะ เหมือนกำลังสแกนตัว
+      const at = (now / 5200) % 1.2;
+      const lit = slices.filter((slice) => Math.abs(slice.y - at) < SLICE * 0.8).map((slice) => slice.pts);
+      strokeLines(pen, lit, turn, plane, midZ - reach, midZ + reach, { far: 0.5, near: 1, thin: 1.2, thick: 2 });
     }
+    figure.style.transform = `rotateY(${(-view.yaw).toFixed(2)}deg) rotateX(${(-view.pitch).toFixed(2)}deg)`;
   }
 
   // ---------- ลาก ซูม คีย์บอร์ด ----------
@@ -925,11 +1060,15 @@ function sceneClient() {
   document.addEventListener('visibilitychange', kick);
   fit();
   route();
+  // เปิดมาให้การ์ดใบแรกเยื้องไปทางซ้ายและใบถัดไปอยู่ทางขวา จะได้เห็นคนที่ยืนอยู่กลางฉากเต็มตัว
+  const firstRow = cards.filter((card) => card.el.matches('.is-chapter') && card.tilt === cards[0].tilt).length;
+  const home = firstRow ? -Math.min(180 / firstRow, 38) : 0;
+  view.yaw = home;
   if (!reading && !still.matches) {
-    // เปิดมาให้ฉากหมุนเข้าหาผู้ชม
-    view.yaw = 46;
+    // ฉากหมุนเข้าหาผู้ชม
+    view.yaw = home + 46;
     view.zoom = 0.7;
-    glide({ yaw: 0, zoom: 1 }, 1900);
+    glide({ yaw: home, zoom: 1 }, 1900);
   }
   setTimeout(dismissHint, 9000);
 }
