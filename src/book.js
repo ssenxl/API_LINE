@@ -1,5 +1,15 @@
 import crypto from 'node:crypto';
-import { MASCOT_URL, SCENE_SCRIPT, SCENE_STYLE, THEME_STYLE, layoutScene, swatch } from './book-scene.js';
+import {
+  COVER_DEFS,
+  MASCOT_URL,
+  SCENE_SCRIPT,
+  SCENE_STYLE,
+  THEME_ATTR,
+  THEME_STYLE,
+  cover,
+  layoutScene,
+  swatch,
+} from './book-scene.js';
 import { CHAPTER_PROMPT_VERSION, writeChapter } from './brain.js';
 import { config } from './config.js';
 import * as kb from './knowledge.js';
@@ -415,6 +425,7 @@ function scene({ chapters, labels, facts, shortcuts }) {
   const chapterCards = chapters.map(
     (chapter, i) => `<a class="card is-chapter" href="#ch-${i + 1}" ${at(layout.chapter[i])}><span class="face">
       <span ${swatch(i)}>
+        ${cover(i)}
         <span class="tag">${chapter.rules.length} ข้อ</span>
         <span class="no">${String(i + 1).padStart(2, '0')}</span>
       </span>
@@ -447,6 +458,7 @@ function scene({ chapters, labels, facts, shortcuts }) {
   });
 
   return `<div class="scene">
+  ${COVER_DEFS}
   <div class="sky"><div class="dyes" id="dyes"></div></div>
   <canvas class="threads" id="threads" aria-hidden="true"></canvas>
   <div class="stage" id="stage" data-radius="${layout.radius}" data-rings="${layout.rings.join(',')}"
@@ -524,7 +536,7 @@ function page(data, chapters) {
     : empty;
 
   return `<!doctype html>
-<html lang="th">
+<html lang="th"${THEME_ATTR}>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">

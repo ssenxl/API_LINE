@@ -42,4 +42,4 @@ services:
       - key: ADMIN_KEY
         sync: false
       - key: BOOK_TITLE
-        value: สมุดความรู้ SCM
+        value: Knowledge Management (KM) for SCM

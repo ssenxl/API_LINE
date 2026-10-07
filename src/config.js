@@ -59,7 +59,7 @@ export const config = {
   book: {
     title: process.env.BOOK_TITLE || 'สมุดความรู้ของทีม',
     // ชื่อแบรนด์ตัวเล็กเหนือชื่อเล่มบนหน้าแรก
-    brand: process.env.BOOK_BRAND || 'NANYANG',
+    brand: process.env.BOOK_BRAND || 'Nan Yang Textile Group',
     // ถ้าตั้งไว้ ต้องเปิด /book?key=ค่านี้ ถึงจะอ่านได้ กันคนนอกที่เดา URL ได้
     key: process.env.BOOK_KEY || '',
     // ลิงก์สั้นสำหรับส่งต่อ เช่น scm-book → /scm-book เปิดได้โดยไม่ต้องมี key

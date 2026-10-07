@@ -1,4 +1,4 @@
-import { THEME_STYLE, swatch } from './book-scene.js';
+import { THEME_ATTR, THEME_STYLE, swatch } from './book-scene.js';
 import { BOOK_SECTIONS, STYLE, date, escape, retiredBy, retirementNote } from './book.js';
 import { config } from './config.js';
 
@@ -117,7 +117,7 @@ export function shell({ tab, title, query = {}, body, search = false }) {
   ).join('');
 
   return `<!doctype html>
-<html lang="th">
+<html lang="th"${THEME_ATTR}>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">

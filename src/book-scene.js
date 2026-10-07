@@ -116,22 +116,67 @@ export function layoutScene(count) {
 
 // ---------- ผ้าตัวอย่าง ----------
 
-/** สีย้อมโทนดิจิทัล ไล่จากสว่างไปเข้มเหมือนผ้าที่จุ่มย้อม แต่ละบทได้สีของตัวเองและใช้ซ้ำเมื่อครบรอบ */
+/**
+ * สีย้อมโทนดิจิทัล แต่ละบทได้สามสี: สีสว่าง สีเข้ม และสีแซมที่ซึมเข้ามาจากมุม
+ * เหมือนผ้าที่ย้อมสองสีแล้วสีไหลเข้าหากัน ใช้ซ้ำเมื่อครบรอบ
+ */
 const DYES = [
-  ['#4cc2ff', '#1d4ed8'], // ฟ้าไฟฟ้า
-  ['#3fe0f0', '#0e7490'], // ไซแอน
-  ['#a78bfa', '#5b21b6'], // ม่วงไวโอเลต
-  ['#34d8c0', '#0f766e'], // เขียวทีล
-  ['#e879f9', '#7e22ce'], // ชมพูม่วง
-  ['#6da8ff', '#3730a3'], // น้ำเงินคราม
-  ['#7cecff', '#2563eb'], // ฟ้าอะควา
-  ['#8f96ff', '#6d28d9'], // ครามอมม่วง
+  ['#4cc2ff', '#1d4ed8', '#a78bfa'], // ฟ้าไฟฟ้า แซมม่วง
+  ['#3fe0f0', '#0e7490', '#8f96ff'], // ไซแอน แซมคราม
+  ['#a78bfa', '#5b21b6', '#7cecff'], // ม่วงไวโอเลต แซมฟ้า
+  ['#34d8c0', '#0f766e', '#6da8ff'], // เขียวทีล แซมน้ำเงิน
+  ['#e879f9', '#7e22ce', '#ffb3d9'], // ชมพูม่วง แซมชมพูอ่อน
+  ['#6da8ff', '#3730a3', '#7cecff'], // น้ำเงินคราม แซมฟ้า
+  ['#7cecff', '#2563eb', '#a78bfa'], // ฟ้าอะควา แซมม่วง
+  ['#8f96ff', '#6d28d9', '#e879f9'], // ครามอมม่วง แซมชมพู
 ];
 const WEAVES = 4;
 
 /** attribute ของชิ้นผ้าตัวอย่างประจำบทที่ index (นับจาก 0) */
-export const swatch = (index) =>
-  `class="swatch weave-${index % WEAVES}" style="--c1:${DYES[index % DYES.length][0]};--c2:${DYES[index % DYES.length][1]}"`;
+export const swatch = (index) => {
+  const [light, deep, accent] = DYES[index % DYES.length];
+  return `class="swatch weave-${index % WEAVES}" style="--c1:${light};--c2:${deep};--c3:${accent}"`;
+};
+
+/** ค่าสุ่มที่ได้เลขเดิมทุกครั้งสำหรับบทเดียวกัน ลายปกของแต่ละบทจึงไม่เปลี่ยนไปมาทุกครั้งที่เปิดหน้า */
+const pick = (index, salt) => {
+  const x = Math.sin(index * 127.1 + salt * 311.7) * 43758.5453;
+  return x - Math.floor(x);
+};
+
+/**
+ * ลายปกของการ์ดบท: ผืนผ้าพลิ้วซ้อนกันสามชั้น มีเส้นด้ายเรืองแสงพาดตามรอยพับ แต่ละบทพลิ้วไม่เหมือนกัน
+ * วาดเป็น SVG ขนาด 256 × 138 (เท่ากับปกพอดี) ส่วน COVER_DEFS ต้องวางไว้ในหน้าหนึ่งครั้งเพื่อให้สีไล่ของรอยพับทำงาน
+ */
+export function cover(index) {
+  const n = (value) => value.toFixed(1);
+  const folds = [0, 1, 2].map((layer) => {
+    const half = 52 + pick(index, layer) * 44; // ครึ่งช่วงคลื่น
+    const lift = (16 + pick(index, layer + 10) * 16) * (pick(index, layer + 40) < 0.5 ? -1 : 1);
+    const y = 50 + layer * 27 + pick(index, layer + 20) * 12;
+    const x = -half * (0.4 + pick(index, layer + 30) * 1.4);
+    const waves = `t${n(half)} 0`.repeat(Math.ceil((256 - x) / half));
+    return { x, y, half, d: `M${n(x)} ${n(y)}q${n(half / 2)} ${n(lift)} ${n(half)} 0${waves}` };
+  });
+  const [top, middle] = folds;
+  // ปมด้าย: จุดสว่างบนเส้นด้ายเส้นบน ค่อนไปทางขวา
+  const knot = top.x + top.half * Math.max(1, Math.round((188 - top.x) / top.half));
+  return `<svg class="folds" viewBox="0 0 256 138" preserveAspectRatio="none" aria-hidden="true">
+        ${folds.map((fold) => `<path d="${fold.d}V138H-400Z"/>`).join('')}
+        <path class="thread faint" d="${middle.d}"/>
+        <path class="thread" d="${top.d}"/>
+        <circle cx="${n(knot)}" cy="${n(top.y)}" r="2.6"/>
+      </svg>`;
+}
+
+/** สีไล่ของรอยพับผ้า: สว่างที่สันแล้วจางลงด้านล่าง ปกทุกใบใช้ร่วมกัน */
+export const COVER_DEFS = `<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+    <linearGradient id="fold" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fff" stop-opacity=".36"/>
+      <stop offset=".45" stop-color="#fff" stop-opacity=".07"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </linearGradient>
+  </defs></svg>`;
 
 const tile = (width, height, body) =>
   `url("data:image/svg+xml,${encodeURIComponent(
@@ -174,6 +219,15 @@ const NIGHT = `
   --thread: 103, 232, 249; --halo: .2; --blend: lighter;
 `;
 
+/**
+ * โทนสีที่ล็อกไว้ให้ทุกเครื่องเห็นเหมือนกัน ทั้งหน้าหนังสือและหน้าผู้ดูแล: 'dark' หรือ 'light'
+ * ถ้าเว้นว่าง ('') สีจะเปลี่ยนตามโหมดมืด/สว่างของแต่ละเครื่อง
+ */
+export const THEME = 'dark';
+
+/** attribute ที่ต้องใส่ใน <html> ของทุกหน้าเพื่อให้โทนสีที่ล็อกไว้มีผล */
+export const THEME_ATTR = THEME ? ` data-theme="${THEME}"` : '';
+
 const sizes = Object.entries(SIZE)
   .map(([kind, { w, h }]) => `.is-${kind} { --w: ${w}px; --h: ${h}px; }`)
   .join('\n');
@@ -189,10 +243,14 @@ export const THEME_STYLE = `
   :root:not([data-theme="light"]) { ${NIGHT} }
 }
 :root[data-theme="dark"] { ${NIGHT} }
+/* ล็อกโหมดมืดไว้ก็ตาม ตอนพิมพ์ลงกระดาษต้องเป็นตัวหนังสือเข้มบนพื้นขาวเสมอ */
+@media print {
+  :root, :root[data-theme="dark"] { ${DAY} }
+}
 
 h1, h2, .wordmark { font-family: 'Trirong', 'Sarabun', serif; font-weight: 600; }
 .eyebrow { letter-spacing: .12em; }
-.wordmark { margin: 0; font-size: .92rem; font-weight: 500; letter-spacing: .52em; text-transform: uppercase; color: var(--shine); }
+.wordmark { margin: 0; font-size: .92rem; font-weight: 500; letter-spacing: .36em; text-transform: uppercase; color: var(--shine); }
 .wordmark::after {
   content: ''; display: block; width: 46px; height: 1px; margin: 10px 0 12px;
   background: linear-gradient(90deg, var(--shine), transparent);
@@ -220,19 +278,31 @@ h1, h2, .wordmark { font-family: 'Trirong', 'Sarabun', serif; font-weight: 600; 
 
 /* ---------- ผ้าตัวอย่าง ---------- */
 .swatch {
-  position: relative; display: block; flex: none; overflow: hidden; border-radius: 16px;
-  color: #fff; text-shadow: 0 2px 10px rgba(0, 0, 0, .4);
+  position: relative; display: block; flex: none; overflow: hidden; border-radius: 16px; isolation: isolate;
+  color: #fff; text-shadow: 0 2px 10px rgba(0, 0, 40, .35);
+  /* สีย้อมสองสีซึมเข้าหากัน: สีแซมไหลมาจากมุมขวาบน สีเข้มจมอยู่มุมซ้ายล่าง */
   background:
-    linear-gradient(118deg, transparent 30%, rgba(255, 255, 255, .28) 47%, transparent 62%),
-    var(--weave),
-    linear-gradient(168deg, var(--c1), var(--c2));
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .2), inset 0 -34px 40px -24px rgba(0, 0, 0, .4);
+    radial-gradient(95% 130% at 100% 0%, var(--c3), transparent 64%),
+    radial-gradient(120% 120% at 0% 100%, var(--c2), transparent 72%),
+    linear-gradient(150deg, var(--c1), var(--c2));
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .24), inset 0 1px 0 rgba(255, 255, 255, .55);
 }
-/* รอยเย็บรอบชิ้นผ้า */
+/* ลายทอบาง ๆ ให้ยังรู้ว่าเป็นเนื้อผ้า */
+.swatch::before {
+  content: ''; position: absolute; inset: 0; z-index: -1;
+  background: var(--weave); opacity: .22;
+}
+/* เงาวาวด้านบนกับเงาเข้มด้านล่าง ตัวเลขบนปกจะได้อ่านง่าย */
 .swatch::after {
-  content: ''; position: absolute; inset: 6px; border-radius: 11px;
-  border: 1px dashed rgba(255, 255, 255, .55);
+  content: ''; position: absolute; inset: 0; z-index: -1;
+  background: linear-gradient(180deg, rgba(255, 255, 255, .12), transparent 34%, transparent 52%, rgba(0, 0, 50, .36));
 }
+/* ผืนผ้าพลิ้วบนปกการ์ดบท กับเส้นด้ายเรืองแสงตามรอยพับ */
+.folds { position: absolute; inset: 0; width: 100%; height: 100%; }
+.folds path { fill: url(#fold); }
+.folds .thread { fill: none; stroke: rgba(255, 255, 255, .8); stroke-width: 1.1; filter: drop-shadow(0 0 3px rgba(255, 255, 255, .9)); }
+.folds .faint { stroke: rgba(255, 255, 255, .3); stroke-width: .8; filter: none; }
+.folds circle { fill: #fff; filter: drop-shadow(0 0 4px #fff); }
 .weave-0 { --weave: ${tile(12, 10, stroke('M0 1l6 7 6-7', 2.2))}; } /* ผ้าถัก */
 .weave-1 { --weave: ${tile(
   8,
@@ -311,11 +381,17 @@ ${sizes}
 .face { display: flex; flex-direction: column; height: 100%; min-width: 0; }
 
 .is-chapter .swatch { height: 138px; }
-.swatch .no { position: absolute; left: 16px; bottom: 6px; font: 600 56px/1 'Trirong', serif; }
+.swatch .no {
+  position: absolute; left: 16px; bottom: 8px; font: 600 58px/1 'Trirong', serif; letter-spacing: -.01em;
+  /* ตัวเลขไล่จากขาวสว่างลงไปขาวโปร่ง เงาต้องใช้ filter เพราะตัวอักษรโปร่งใสใช้ text-shadow ไม่ได้ */
+  background: linear-gradient(180deg, #fff 38%, rgba(255, 255, 255, .7));
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  text-shadow: none; filter: drop-shadow(0 3px 8px rgba(0, 0, 50, .45));
+}
 .swatch .tag {
-  position: absolute; right: 13px; top: 13px; padding: 0 10px; border-radius: 999px;
+  position: absolute; right: 12px; top: 12px; padding: 1px 11px; border-radius: 999px;
   font-size: 12px; font-weight: 600; text-shadow: none;
-  background: rgba(0, 0, 0, .3); border: 1px solid rgba(255, 255, 255, .4);
+  background: rgba(255, 255, 255, .2); border: 1px solid rgba(255, 255, 255, .5);
 }
 .kicker {
   display: block; margin: 14px 6px 2px;
@@ -344,7 +420,6 @@ ${sizes}
   width: 62px; height: 62px; border-radius: 14px;
   display: grid; place-items: center; font: 600 19px/1 'Trirong', serif;
 }
-.is-rule .swatch::after { inset: 4px; border-radius: 10px; }
 .txt { display: block; min-width: 0; }
 .is-rule .name, .is-rule .sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .is-rule .name { display: block; font-size: 14.5px; font-weight: 600; }
@@ -429,6 +504,9 @@ ${sizes}
     .stage { perspective-origin: 50% 55%; }
     .world { top: 55%; }
     .wordmark { font-size: .8rem; }
+    /* จอแคบ: ชื่อแบรนด์กับชื่อเล่มกินเต็มความกว้าง ปุ่มย้ายลงไปอยู่ใต้ตัวเลขสรุป */
+    .top { grid-template-columns: 1fr; }
+    .actions { order: 1; margin-top: 12px; }
     .actions a { padding: 6px 12px; font-size: .82rem; }
     .hint { font-size: .78rem; }
     .js .sheet main { padding: 20px 18px 80px; }
