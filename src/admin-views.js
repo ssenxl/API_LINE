@@ -1,6 +1,5 @@
 import { THEME_ATTR, THEME_STYLE, swatch } from './book-scene.js';
-import { BOOK_SECTIONS, STYLE, date, escape, retiredBy, retirementNote } from './book.js';
-import { config } from './config.js';
+import { BOOK_SECTIONS, STYLE, brandMark, date, escape, retiredBy, retirementNote } from './book.js';
 
 /**
  * หน้าตาทุกหน้าของ /admin แยกจาก admin.js ที่ดูแลเส้นทางและสิทธิ์
@@ -132,7 +131,7 @@ export function shell({ tab, title, query = {}, body, search = false }) {
 <div class="sky" aria-hidden="true"><div class="dyes"></div></div>
 <nav class="tabs" aria-label="เมนูผู้ดูแล">${nav}<a href="/" target="_blank" rel="noopener">เปิดหนังสือ ↗</a></nav>
 <main>
-  <p class="wordmark">${escape(config.book.brand)}</p>
+  <p class="wordmark">${brandMark()}</p>
   <h1>${escape(title)}</h1>
   ${notice(query)}
   ${search ? '<input class="search" id="filter" type="search" placeholder="ค้นหา" aria-label="ค้นหา">' : ''}

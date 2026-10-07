@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import {
   COVER_DEFS,
+  LOGO_URL,
   MASCOT_URL,
   SCENE_SCRIPT,
   SCENE_STYLE,
@@ -169,6 +170,12 @@ export const date = (value) =>
     month: 'short',
     year: 'numeric',
   });
+
+/** โลโก้บริษัท ถ้าไม่มีไฟล์ public/logo.png ใช้ชื่อบริษัทเป็นตัวหนังสือแทน */
+export const brandMark = () =>
+  LOGO_URL
+    ? `<img class="logo" src="${LOGO_URL}" alt="${escape(config.book.brand)}" draggable="false">`
+    : escape(config.book.brand);
 
 /**
  * เลขข้อในเล่ม เช่น 1.2 คือบทที่ 1 ข้อที่ 2
@@ -469,7 +476,7 @@ function scene({ chapters, labels, facts, shortcuts }) {
   </div>
   <header class="hud">
     <div class="top">
-      <p class="wordmark">${escape(config.book.brand)}</p>
+      <p class="wordmark">${brandMark()}</p>
       <nav class="actions" aria-label="ทางลัด">
         ${shortcuts
           .filter((s) => s.icon && s.icon !== 'howto')
@@ -530,9 +537,10 @@ function page(data, chapters) {
     { href: '#all', icon: 'all', title: 'อ่านทั้งเล่ม', sub: 'เรียงต่อกัน พิมพ์ได้' },
   ].filter(Boolean);
   const facts = chapters.length
-    ? [`${activeCount} กฎที่ใช้อยู่`, `${chapters.length} บท`, show.authors && `${teachers} ผู้สอน`]
+    ? [[activeCount, 'กฎที่ใช้อยู่'], [chapters.length, 'บท'], show.authors && [teachers, 'ผู้สอน']]
         .filter(Boolean)
-        .join(' · ')
+        .map(([count, label]) => `<span><b>${count}</b> ${label}</span>`)
+        .join('')
     : empty;
 
   return `<!doctype html>
@@ -544,7 +552,7 @@ function page(data, chapters) {
 <script>document.documentElement.classList.add('js');</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&family=Trirong:wght@500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&family=Trirong:wght@500;600;700&display=swap" rel="stylesheet">
 <style>${STYLE}${THEME_STYLE}${SCENE_STYLE}</style>
 </head>
 <body>
@@ -560,6 +568,7 @@ ${scene({ chapters, labels: data.labels, facts, shortcuts })}
 <div class="sheet" id="sheet">
 <main>
   <header class="cover" id="cover" data-sec="front" data-title="ปกและสารบัญ">
+    ${LOGO_URL ? brandMark() : ''}
     <p class="eyebrow">ความรู้ที่ทีมสอนผ่าน LINE</p>
     <h1>${escape(config.book.title)}</h1>
     <p class="stats">

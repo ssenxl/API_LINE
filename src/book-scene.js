@@ -16,24 +16,33 @@ import { fileURLToPath } from 'node:url';
 
 // ---------- ไฟล์ประกอบ ----------
 
-/** โฟลเดอร์ไฟล์ประกอบหน้าเว็บ (ตอนนี้มีแค่รูปตัวการ์ตูน) เซิร์ฟเวอร์เปิดให้โหลดที่ /static */
+/** โฟลเดอร์ไฟล์ประกอบหน้าเว็บ (รูปตัวการ์ตูนกับโลโก้) เซิร์ฟเวอร์เปิดให้โหลดที่ /static */
 export const STATIC_DIR = fileURLToPath(new URL('../public', import.meta.url));
 
 /**
- * รูปตัวการ์ตูนที่ยืนอยู่กลางฉาก จะเปลี่ยนตัวการ์ตูนให้วางรูปใหม่ทับ public/mascot.webp (พื้นหลังโปร่งใส ยืนเต็มตัว)
- * ลิงก์มีรหัสย่อของเนื้อไฟล์ต่อท้าย เบราว์เซอร์จึงเก็บรูปไว้ใช้ได้ยาว และเห็นรูปใหม่ทันทีเมื่อเปลี่ยนไฟล์
- * ไม่มีไฟล์นี้ก็ไม่เป็นไร ฉากยังใช้ได้ แค่ไม่มีตัวการ์ตูน
+ * ลิงก์ของไฟล์ในโฟลเดอร์ public มีรหัสย่อของเนื้อไฟล์ต่อท้าย
+ * เบราว์เซอร์จึงเก็บไฟล์ไว้ใช้ได้ยาว และเห็นของใหม่ทันทีเมื่อเปลี่ยนไฟล์ ถ้าไม่มีไฟล์คืนค่าว่าง
  */
-export const MASCOT_URL = mascotUrl();
-
-function mascotUrl() {
+function staticUrl(name) {
   try {
-    const file = fs.readFileSync(`${STATIC_DIR}/mascot.webp`);
-    return `/static/mascot.webp?v=${crypto.createHash('sha1').update(file).digest('hex').slice(0, 10)}`;
+    const file = fs.readFileSync(`${STATIC_DIR}/${name}`);
+    return `/static/${name}?v=${crypto.createHash('sha1').update(file).digest('hex').slice(0, 10)}`;
   } catch {
     return '';
   }
 }
+
+/**
+ * รูปตัวการ์ตูนที่ยืนอยู่กลางฉาก จะเปลี่ยนตัวการ์ตูนให้วางรูปใหม่ทับ public/mascot.webp (พื้นหลังโปร่งใส ยืนเต็มตัว)
+ * ไม่มีไฟล์นี้ก็ไม่เป็นไร ฉากยังใช้ได้ แค่ไม่มีตัวการ์ตูน
+ */
+export const MASCOT_URL = staticUrl('mascot.webp');
+
+/**
+ * โลโก้บริษัทที่หัวหน้าของทุกหน้า จะเปลี่ยนโลโก้ให้วางรูปใหม่ทับ public/logo.png (พื้นหลังโปร่งใส สีเดียว)
+ * ไม่มีไฟล์นี้ หน้าเว็บจะแสดงชื่อบริษัทเป็นตัวหนังสือแทน
+ */
+export const LOGO_URL = staticUrl('logo.png');
 
 // ---------- จัดวางการ์ด ----------
 
@@ -201,6 +210,8 @@ const DAY = `
   --glass-line: rgba(255, 255, 255, .92); --glass-shadow: rgba(30, 58, 120, .34);
   --on-glass: #0b1b3a; --on-glass-muted: #4a5a7a;
   --shine: #1d4ed8; --scrim: rgba(12, 28, 66, .32);
+  --title-a: #0b1b3a; --title-b: #1d4ed8; --title-c: #6d28d9; --veil: rgba(255, 255, 255, .6);
+  --logo: none;
   --thread: 37, 99, 235; --halo: .22; --blend: source-over;
 `;
 
@@ -216,6 +227,8 @@ const NIGHT = `
   --glass-line: rgba(140, 195, 255, .24); --glass-shadow: rgba(0, 0, 0, .7);
   --on-glass: #eaf2ff; --on-glass-muted: #a9b9d9;
   --shine: #67e8f9; --scrim: rgba(1, 3, 12, .52);
+  --title-a: #ffffff; --title-b: #7dd8ff; --title-c: #c4b5fd; --veil: rgba(3, 6, 17, .55);
+  --logo: brightness(0) invert(1) drop-shadow(0 0 10px rgba(103, 232, 249, .55));
   --thread: 103, 232, 249; --halo: .2; --blend: lighter;
 `;
 
@@ -255,6 +268,10 @@ h1, h2, .wordmark { font-family: 'Trirong', 'Sarabun', serif; font-weight: 600; 
   content: ''; display: block; width: 46px; height: 1px; margin: 10px 0 12px;
   background: linear-gradient(90deg, var(--shine), transparent);
 }
+/* โลโก้บริษัท ไฟล์เป็นสีน้ำเงินเข้มซึ่งกลืนกับพื้นมืด โทนมืดจึงกลับเป็นสีขาว (--logo)
+   ส่วนโทนสว่างและตอนพิมพ์ใช้สีจริงของโลโก้ */
+.logo { display: block; height: 40px; width: auto; filter: var(--logo); -webkit-user-drag: none; }
+.cover .logo { height: 46px; margin-bottom: 22px; }
 
 /* ---------- พื้นหลังน้ำย้อม ---------- */
 .sky { background: radial-gradient(130% 100% at 50% 0%, var(--sky-a), var(--sky-b) 80%); }
@@ -322,14 +339,14 @@ export const SCENE_STYLE = `
 .sky, .threads, .stage { position: absolute; inset: 0; }
 .threads { width: 100%; height: 100%; pointer-events: none; }
 .stage {
-  perspective: ${PERSPECTIVE}px; perspective-origin: 50% 52%;
+  perspective: ${PERSPECTIVE}px; perspective-origin: 50% 55%;
   touch-action: none; cursor: grab;
   -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent;
   animation: arrive 1.4s ease-out backwards;
 }
 .stage.dragging { cursor: grabbing; }
 @keyframes arrive { from { opacity: 0; } }
-.world { position: absolute; left: 50%; top: 52%; transform-style: preserve-3d; }
+.world { position: absolute; left: 50%; top: 55%; transform-style: preserve-3d; }
 /* ตัวการ์ตูนกลางฉาก: รูปภาพบนแผ่นที่เท้าปักอยู่กลางวงแหวน สคริปต์หมุนแผ่นให้หันเข้าหากล้องเสมอ
    ค่อย ๆ ปรากฏเมื่อโหลดรูปเสร็จ แสงเรืองรอบตัวช่วยให้ตัวสีขาวไม่กลืนกับพื้นหลังสว่าง */
 .figure {
@@ -436,13 +453,42 @@ ${sizes}
   display: flex; flex-direction: column; justify-content: space-between;
 }
 .hud a { pointer-events: auto; }
-/* แถวแรกเป็นชื่อแบรนด์กับปุ่ม ชื่อเล่มกับตัวเลขสรุปกินเต็มความกว้าง จอแคบจะได้ไม่ตกบรรทัด */
-.top { display: grid; grid-template-columns: 1fr auto; column-gap: 16px; align-items: start; }
+/* ม่านจาง ๆ หลังหัวหน้า ชื่อเล่มจะได้ยังอ่านออกตอนการ์ดหมุนมาอยู่ข้างหลัง */
+.hud::before {
+  content: ''; position: absolute; left: 0; top: 0; width: min(980px, 100%); height: 300px;
+  background: radial-gradient(100% 100% at 0% 0%, var(--veil), transparent 72%);
+}
+/* แถวแรกเป็นชื่อบริษัทกับปุ่ม ชื่อเล่มกับตัวเลขสรุปกินเต็มความกว้าง */
+.top { position: relative; display: grid; grid-template-columns: 1fr auto; column-gap: 16px; align-items: start; }
 .top h1, .facts { grid-column: 1 / -1; }
-/* ชื่อเล่มต้องยังอ่านออกตอนการ์ดหมุนมาอยู่ข้างหลัง */
-.wordmark, .hud h1, .facts { text-shadow: 0 0 5px var(--sky-b), 0 1px 20px var(--sky-b); }
-.hud h1 { font-size: clamp(1.45rem, 3.2vw, 2.2rem); }
-.facts { margin: 6px 0 0; font-size: .9rem; color: var(--on-glass-muted); }
+/* ชื่อบริษัท: ตัวใหญ่และสว่างกว่าในหน้าอื่น มีเส้นเรืองแสงขีดใต้ */
+.hud .wordmark {
+  font-size: 1.02rem; font-weight: 600; letter-spacing: .34em;
+  text-shadow: 0 0 16px rgba(var(--thread), .7), 0 1px 3px var(--sky-b);
+}
+/* จอเตี้ยโลโก้ย่อลงตามความสูงจอ หัวหน้าจะได้ไม่ลงไปทับการ์ดแถวบน */
+.hud .logo { height: clamp(34px, 5.4vh, 50px); }
+.hud .wordmark::after {
+  width: 132px; height: 2px; margin: 12px 0 14px; border-radius: 2px;
+  background: linear-gradient(90deg, var(--shine), var(--title-c) 60%, transparent);
+  box-shadow: 0 0 12px rgba(var(--thread), .8);
+}
+/* ชื่อเล่ม: ตัวใหญ่ หนา ไล่สี และเรืองแสง
+   ตัวอักษรที่ไล่สีต้องโปร่งใส จึงใช้ text-shadow ไม่ได้ ให้เงาด้วย filter แทน
+   justify-self ทำให้กล่องกว้างเท่าข้อความ สีจะได้ไล่ครบตลอดชื่อ */
+.hud h1 {
+  justify-self: start; font-size: clamp(1.5rem, min(4vw, 6.2vh), 3.1rem); font-weight: 700; line-height: 1.16; text-wrap: balance;
+  background: linear-gradient(100deg, var(--title-a) 15%, var(--title-b) 62%, var(--title-c));
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  filter: drop-shadow(0 0 20px rgba(var(--thread), .45)) drop-shadow(0 2px 3px var(--sky-b));
+}
+/* ตัวเลขสรุปเป็นป้ายแก้วเรียงกัน */
+.facts { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 0; font-size: .88rem; color: var(--on-glass-muted); }
+.facts span {
+  padding: 3px 13px 3px 11px; border-radius: 999px; white-space: nowrap;
+  background: var(--glass); border: 1px solid var(--glass-line);
+}
+.facts b { margin-right: 3px; font-size: 1.02rem; color: var(--shine); }
 .actions { display: flex; gap: 8px; }
 .actions a, .hint {
   padding: 7px 16px; border-radius: 999px; font-size: .88rem; white-space: nowrap;
@@ -500,11 +546,11 @@ ${sizes}
   }
   @media (max-width: 640px) {
     .hud { padding-left: 18px; padding-right: 18px; }
-    /* จอแคบ: เลื่อนฉากลงเล็กน้อยให้พ้นชื่อเล่มด้านบน */
-    .stage { perspective-origin: 50% 55%; }
-    .world { top: 55%; }
-    .wordmark { font-size: .8rem; }
-    /* จอแคบ: ชื่อแบรนด์กับชื่อเล่มกินเต็มความกว้าง ปุ่มย้ายลงไปอยู่ใต้ตัวเลขสรุป */
+    /* จอแคบ: หัวหน้ากินที่หลายบรรทัด จึงเลื่อนฉากลงให้พ้น (สคริปต์จะวางตำแหน่งจริงตามความสูงของหัวหน้าอีกที) */
+    .stage { perspective-origin: 50% 58%; }
+    .world { top: 58%; }
+    .hud .wordmark { font-size: .82rem; letter-spacing: .26em; }
+    /* จอแคบ: ชื่อบริษัทกับชื่อเล่มกินเต็มความกว้าง ปุ่มย้ายลงไปอยู่ใต้ตัวเลขสรุป */
     .top { grid-template-columns: 1fr; }
     .actions { order: 1; margin-top: 12px; }
     .actions a { padding: 6px 12px; font-size: .82rem; }
@@ -544,8 +590,9 @@ function sceneClient() {
   const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
   const still = matchMedia('(prefers-reduced-motion: reduce)');
 
+  const HOME_PITCH = -7; // มุมกล้องตอนเปิดหน้า มองลงเล็กน้อย
   // zoom = 1 คือระยะที่การ์ดด้านหน้าพอดีจอ
-  const view = { yaw: 0, pitch: -7, zoom: 1 };
+  const view = { yaw: 0, pitch: HOME_PITCH, zoom: 1 };
   const spin = { yaw: 0, pitch: 0 };
   let fitScale = 1;
   let width = 0;
@@ -573,6 +620,38 @@ function sceneClient() {
   const chapterRows = new Set([...world.querySelectorAll('.is-chapter')].map((el) => el.dataset.lat)).size || 1;
   // การ์ดเยอะมากแล้ว ซ่อนใบที่อยู่ด้านหลังไปเลย มือถือจะได้ไม่ต้องวาดทุกใบพร้อมกัน
   world.classList.toggle('dense', cards.length > 36);
+  const header = scene.querySelector('.top');
+  // การ์ดตัวแทนของแต่ละแถว ใช้คำนวณว่าฉากสูงกินที่บนจอเท่าไร
+  const rows = [...new Map(cards.map((card) => [card.el.dataset.lat, card.el])).values()].map((el) => ({
+    lat: Number(el.dataset.lat) * RAD,
+    lean: (Number(el.dataset.tilt) - Number(el.dataset.lat)) * RAD,
+    half: el.offsetHeight / 2,
+  }));
+
+  /**
+   * ขอบบนของแถวบนสุดและขอบล่างของแถวล่างสุดอยู่ห่างจากใจกลางฉากกี่จุดบนจอ เมื่อย่อฉากเป็น scale เท่า
+   * คิดจากการ์ดที่หันมาด้านหน้าตรง ๆ ด้วยการแปลงชุดเดียวกับ CSS ของการ์ด
+   */
+  function span(scale) {
+    const eye = R + P / scale; // ระยะจากตาถึงใจกลางฉาก
+    const sp = Math.sin(HOME_PITCH * RAD);
+    const cp = Math.cos(HOME_PITCH * RAD);
+    let up = 0;
+    let down = 0;
+    for (const row of rows) {
+      for (const edge of [-row.half, row.half]) {
+        // เอนการ์ด -> ดันออกไปที่ผิวทรงกลม -> ยกขึ้นตามแถว -> ก้มกล้อง
+        const y1 = edge * Math.cos(row.lean);
+        const z1 = edge * Math.sin(row.lean) + R;
+        const y2 = y1 * Math.cos(row.lat) - z1 * Math.sin(row.lat);
+        const z2 = y1 * Math.sin(row.lat) + z1 * Math.cos(row.lat);
+        const y = ((y2 * cp - z2 * sp) * P) / (eye - (y2 * sp + z2 * cp));
+        up = Math.max(up, -y);
+        down = Math.max(down, y);
+      }
+    }
+    return { up, down };
+  }
 
   // ---------- มุมมอง ----------
 
@@ -584,9 +663,27 @@ function sceneClient() {
     const h = (sample && sample.offsetHeight) || 372;
     // บทมีหลายแถวก็ย่อลงให้เห็นครบทุกแถว จะได้เลือกบทไหนก็ได้โดยไม่ต้องเงยหรือก้มฉากก่อน
     const tall = chapterRows * h + (chapterRows - 1) * 40;
-    // จอแคบย่อลงอีกนิด จะได้เห็นการ์ดสองใบที่ขนาบคนกลางฉากมากขึ้น
-    const share = width < 640 ? 0.58 : 0.66;
+    // จอแคบย่อลงอีกนิด จะได้เห็นการ์ดสองใบที่ขนาบตัวการ์ตูนมากขึ้น
+    const narrow = width < 640;
+    const share = narrow ? 0.58 : 0.66;
     fitScale = clamp(Math.min((width * share) / w, (height * 0.47) / h, (height * 0.8) / tall), 0.6, 1.2);
+    let centre = '';
+    if (narrow && header) {
+      // จอแคบ: หัวหน้ากินเต็มความกว้างจอ จึงย่อฉากให้พอดีกับที่ว่างระหว่างหัวหน้ากับป้ายคำแนะนำด้านล่าง
+      // (ขนาดบนจอไม่ได้แปรตามอัตราย่อเป็นเส้นตรงเสียทีเดียว จึงคำนวณซ้ำสองสามรอบ) แล้ววางไว้กลางที่ว่างนั้น
+      const head = header.getBoundingClientRect().bottom - stage.getBoundingClientRect().top + 14;
+      const foot = height - 56;
+      let size = span(fitScale);
+      for (let i = 0; i < 3 && size.up + size.down > foot - head; i++) {
+        fitScale = clamp((fitScale * (foot - head)) / (size.up + size.down), 0.6, 1.2);
+        size = span(fitScale);
+      }
+      // บทเยอะจนฉากใหญ่เกินที่ว่าง ก็ให้แถวบนสุดเริ่มใต้หัวหน้าพอดี ส่วนที่ล้นลงไปด้านล่างลากหรือซูมออกดูได้
+      const fits = size.up + size.down <= foot - head;
+      centre = `${Math.round(fits ? (head + foot + size.up - size.down) / 2 : head + size.up)}px`;
+    }
+    world.style.top = centre;
+    stage.style.perspectiveOrigin = centre && `50% ${centre}`;
     dpr = Math.min(window.devicePixelRatio || 1, 2);
     canvas.width = Math.round(width * dpr);
     canvas.height = Math.round(height * dpr);
@@ -1124,6 +1221,8 @@ function sceneClient() {
   addEventListener('resize', fit);
   document.addEventListener('visibilitychange', kick);
   fit();
+  // ฟอนต์ของชื่อเล่มโหลดเสร็จแล้วหัวหน้าอาจสูงไม่เท่าเดิม ต้องจัดฉากใหม่
+  if (document.fonts) document.fonts.ready.then(fit);
   route();
   // เปิดมาให้การ์ดใบแรกเยื้องไปทางซ้ายและใบถัดไปอยู่ทางขวา จะได้เห็นตัวการ์ตูนที่ยืนอยู่กลางฉากเต็มตัว
   const firstRow = cards.filter((card) => card.el.matches('.is-chapter') && card.tilt === cards[0].tilt).length;
