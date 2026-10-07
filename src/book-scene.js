@@ -332,7 +332,7 @@ h1, h2, .wordmark { font-family: 'Trirong', 'Sarabun', serif; font-weight: 600; 
 `;
 
 export const SCENE_STYLE = `
-.scene, .scrim, .bar { display: none; }
+.scene, .scrim, .bar, .finder { display: none; }
 
 /* ---------- ฉาก ---------- */
 .scene { position: fixed; inset: 0; overflow: hidden; color: var(--on-glass); }
@@ -452,7 +452,7 @@ ${sizes}
   padding: max(22px, env(safe-area-inset-top)) 28px max(18px, env(safe-area-inset-bottom));
   display: flex; flex-direction: column; justify-content: space-between;
 }
-.hud a { pointer-events: auto; }
+.hud a, .hud button { pointer-events: auto; }
 /* ม่านจาง ๆ หลังหัวหน้า ชื่อเล่มจะได้ยังอ่านออกตอนการ์ดหมุนมาอยู่ข้างหลัง */
 .hud::before {
   content: ''; position: absolute; left: 0; top: 0; width: min(980px, 100%); height: 300px;
@@ -497,6 +497,25 @@ ${sizes}
   -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
 }
 .actions a:hover { border-color: var(--shine); }
+/* ปุ่มเปิดช่องค้นหา หน้าตาเป็นช่องกรอกข้อความ กดแล้วกล่องค้นหาจริงจะลอยขึ้นมา */
+.find {
+  display: flex; align-items: center; gap: 8px; min-width: 210px; padding: 7px 10px 7px 14px;
+  border-radius: 999px; font: inherit; font-size: .88rem; text-align: left; white-space: nowrap; cursor: pointer;
+  color: var(--on-glass-muted); background: var(--glass); border: 1px solid var(--glass-line);
+  -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+}
+.find:hover { border-color: var(--shine); color: var(--on-glass); }
+.find span { flex: 1; }
+.find kbd {
+  padding: 0 7px; border-radius: 6px; font: inherit; font-size: .74rem;
+  border: 1px solid var(--glass-line); color: var(--on-glass-muted);
+}
+/* จอสัมผัสไม่มีคีย์บอร์ด ไม่ต้องบอกปุ่มลัด */
+@media (hover: none) { .find kbd { display: none; } }
+.find svg, .finder-bar svg, .btn svg {
+  flex: none; width: 18px; height: 18px;
+  fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round;
+}
 .hint { align-self: center; margin: 0; color: var(--on-glass-muted); transition: opacity .8s; }
 .hint.gone { opacity: 0; }
 
@@ -526,12 +545,52 @@ ${sizes}
   }
   .where { flex: 1; min-width: 0; margin: 0 6px; font-weight: 600; font-size: .95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .btn {
-    display: grid; place-items: center; flex: none; width: 40px; height: 40px; border-radius: 50%;
-    color: var(--ink); text-decoration: none; font-size: 1.25rem; line-height: 1;
+    display: grid; place-items: center; flex: none; width: 40px; height: 40px; padding: 0; border-radius: 50%;
+    color: var(--ink); text-decoration: none; font: inherit; font-size: 1.25rem; line-height: 1; cursor: pointer;
     border: 1px solid var(--line); background: var(--paper);
   }
   .btn:hover { border-color: var(--accent); color: var(--accent); }
-  .btn:not([href]) { visibility: hidden; }
+  /* ปุ่มก่อนหน้า/ถัดไปที่ไม่มีที่ให้ไป */
+  a.btn:not([href]) { visibility: hidden; }
+
+  /* ---------- กล่องค้นหา ---------- */
+  .js .finder:not([hidden]) {
+    display: flex; justify-content: center; align-items: flex-start;
+    position: fixed; inset: 0; z-index: 5; padding: 11vh 12px 12px;
+    background: var(--scrim);
+    -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+  }
+  .finder-box {
+    display: flex; flex-direction: column; width: min(680px, 100%); max-height: 100%; overflow: hidden;
+    border-radius: 22px; background: var(--bg); border: 1px solid var(--glass-line);
+    box-shadow: 0 40px 90px -30px var(--glass-shadow), 0 0 0 1px rgba(var(--thread), .14), 0 0 60px -20px rgba(var(--thread), .5);
+  }
+  .finder-bar {
+    display: flex; align-items: center; gap: 10px; padding: 12px 12px 12px 18px;
+    color: var(--shine); border-bottom: 1px solid var(--line);
+  }
+  /* ตัวอักษรต้องไม่เล็กกว่า 16px ไม่งั้น iPhone จะซูมหน้าเองตอนแตะช่อง */
+  .finder-bar input {
+    flex: 1; min-width: 0; padding: 6px 0; font: inherit; font-size: 1.05rem;
+    color: var(--ink); background: none; border: 0; outline: 0;
+  }
+  .finder-bar input::placeholder { color: var(--muted); }
+  .finder-bar input::-webkit-search-cancel-button { display: none; }
+  .finder-note { margin: 0; padding: 10px 18px; font-size: .86rem; color: var(--muted); }
+  .finder-list { list-style: none; margin: 0; padding: 0 8px 8px; overflow-y: auto; overscroll-behavior: contain; }
+  .finder-list a { display: block; padding: 10px 12px; border-radius: 12px; color: var(--ink); text-decoration: none; }
+  .finder-list a:hover, .finder-list a.on { background: var(--accent-soft); }
+  .finder-list span { display: block; }
+  .finder-list .kind { font-size: .76rem; font-weight: 600; letter-spacing: .04em; color: var(--accent); }
+  .finder-list .name { font-weight: 600; }
+  .finder-list .text { font-size: .9rem; line-height: 1.6; color: var(--muted); }
+  .finder-list mark { padding: 0 1px; border-radius: 3px; color: var(--ink); background: rgba(var(--thread), .3); }
+  /* ชิ้นที่เพิ่งกดมาจากผลค้นหา กะพริบขอบให้เห็นว่าอยู่ตรงไหน */
+  .hit { border-radius: 10px; animation: hit 2.6s ease-out; }
+  @keyframes hit {
+    0%, 40% { box-shadow: 0 0 0 3px var(--shine), 0 0 28px rgba(var(--thread), .6); }
+    100% { box-shadow: 0 0 0 3px transparent, 0 0 28px transparent; }
+  }
   .js .sheet { flex: 1; overflow-y: auto; overscroll-behavior: contain; }
   .js .sheet main { max-width: none; padding: 28px 32px 96px; }
   .js .reader[data-view="one"] [data-sec]:not(.on) { display: none; }
@@ -554,6 +613,9 @@ ${sizes}
     .top { grid-template-columns: 1fr; }
     .actions { order: 1; margin-top: 12px; }
     .actions a { padding: 6px 12px; font-size: .82rem; }
+    .find { flex: 1; min-width: 0; padding: 6px 10px 6px 12px; font-size: .82rem; }
+    /* กล่องค้นหาชิดขอบบน คีย์บอร์ดบนจอจะได้ไม่บังผลค้น */
+    .js .finder:not([hidden]) { padding: 10px; }
     .hint { font-size: .78rem; }
     .js .sheet main { padding: 20px 18px 80px; }
   }
@@ -1131,6 +1193,20 @@ function sceneClient() {
   );
 
   addEventListener('keydown', (e) => {
+    if (finding) {
+      // ช่องค้นหาเปิดอยู่: ปุ่มทั้งหมดเป็นของช่องค้นหา ยกเว้น Esc ที่ใช้ปิด
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        closeFinder();
+      }
+      return;
+    }
+    // กด / หรือ Ctrl+K เพื่อค้นหา (ถ้าไม่ได้กำลังพิมพ์อยู่ในช่องอื่น)
+    const typing = e.target.closest && e.target.closest('input, textarea, select');
+    if (!typing && (e.key === '/' || ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k'))) {
+      e.preventDefault();
+      return openFinder();
+    }
     if (e.key === 'Escape' && reading) return go('');
     if (reading || e.ctrlKey || e.metaKey || e.altKey) return;
     const turn = { ArrowLeft: [24, 0], ArrowRight: [-24, 0], ArrowUp: [0, 12], ArrowDown: [0, -12] }[e.key];
@@ -1213,6 +1289,218 @@ function sceneClient() {
     });
   }
   addEventListener('hashchange', route);
+
+  // ---------- ค้นหา ----------
+
+  // ค้นจากเนื้อหาที่อยู่ในหน้าอยู่แล้ว ไม่ต้องถามเซิร์ฟเวอร์ ผลค้นแต่ละรายการคือชิ้นหนึ่งของเล่ม
+  // (บท กฎ คำพูดต้นฉบับ ย่อหน้า หรือรายการ) กดแล้วเปิดแผ่นอ่านไปที่ชิ้นนั้น
+  const finder = $('finder');
+  const query = $('finder-input');
+  const results = $('finder-list');
+  const note = $('finder-note');
+  const MAX_RESULTS = 40;
+  let finding = false;
+  let index = null;
+  let shown = [];
+  let picked = -1;
+  let askedFrom = null;
+
+  const tidy = (text) => String(text || '').replace(/\s+/g, ' ').trim();
+
+  /** รวบรวมสิ่งที่ค้นได้จากเนื้อหาในแผ่นอ่าน ทำครั้งเดียวตอนเปิดช่องค้นหาครั้งแรก */
+  function buildIndex() {
+    const entries = [];
+    // weight = ลำดับความสำคัญเมื่อคำค้นตรงพอกัน (กฎ > บท > เนื้อหา) extra = ข้อความที่ค้นเจอได้แต่ไม่ต้องแสดง
+    const add = (el, kind, name, text, weight, extra) => {
+      const section = el.closest('[data-sec]');
+      const anchor = el.closest('[id]');
+      if (!section || !anchor || !section.contains(anchor)) return;
+      const title = tidy(name);
+      const body = tidy(text);
+      if (!title && !body) return;
+      entries.push({
+        el,
+        anchor,
+        kind,
+        title,
+        body,
+        weight,
+        where: section.dataset.title || '',
+        titleHay: title.toLowerCase(),
+        hay: `${title} ${body} ${extra || ''}`.toLowerCase(),
+      });
+    };
+    const textOf = (el, selector) => {
+      const found = el.querySelector(selector);
+      return found ? found.textContent : '';
+    };
+    const place = (el) => el.closest('[data-sec]').dataset.title;
+
+    for (const section of reader.querySelectorAll('section.chapter')) {
+      add(section.querySelector('h2') || section, 'บท', section.dataset.title, '', 2);
+    }
+    for (const rule of reader.querySelectorAll('article.rule')) {
+      const name = `${textOf(rule, '.num')} ${textOf(rule, 'h4')}`;
+      const kind = rule.classList.contains('retired') ? 'กฎที่เลิกใช้แล้ว' : 'กฎ';
+      add(rule, kind, name, textOf(rule, '.summary'), 3, textOf(rule, '.rid'));
+      // เอาเฉพาะคำพูดจริง ไม่รวมป้ายกำกับ ชื่อผู้สอน และวันที่
+      for (const quote of rule.querySelectorAll('blockquote')) {
+        const said = [...quote.querySelectorAll('p:not(.label)')].map((p) => p.textContent).join(' ');
+        add(quote, 'คำพูดต้นฉบับ', name, said, 1);
+      }
+    }
+    for (const el of reader.querySelectorAll('article.conflict')) add(el, 'ข้อขัดแย้ง', place(el), el.textContent, 1);
+    const prose =
+      '.overview p, .overview li, section.chapter > p:not(.eyebrow):not(.meta), section.chapter > ul > li, ' +
+      'section.chapter > h3:not(.rules-heading)';
+    for (const el of reader.querySelectorAll(prose)) add(el, 'เนื้อหา', place(el), el.textContent, 1);
+    for (const el of reader.querySelectorAll('.gaps li')) add(el, 'สิ่งที่ยังไม่ชัด', place(el), el.textContent, 1);
+    for (const el of reader.querySelectorAll('.howto li')) add(el, 'วิธีอ่านเล่มนี้', '', el.textContent, 1);
+    return entries;
+  }
+
+  /** ตัดข้อความช่วงที่มีคำค้นมาแสดง ถ้าคำค้นตรงแค่ในชื่อ ก็แสดงต้นข้อความ */
+  function excerpt(body, words) {
+    const low = body.toLowerCase();
+    const at = Math.min(Infinity, ...words.map((word) => low.indexOf(word)).filter((i) => i >= 0));
+    let from = at === Infinity ? 0 : Math.max(0, at - 36);
+    // ไม่เริ่มตัดที่สระบนล่างหรือวรรณยุกต์ ไม่งั้นจะได้เครื่องหมายลอย ๆ ไม่มีพยัญชนะ
+    while (from > 0 && /[ัิ-ฺ็-๎]/.test(body[from])) from++;
+    const to = Math.min(body.length, from + 132);
+    return `${from > 0 ? '…' : ''}${body.slice(from, to)}${to < body.length ? '…' : ''}`;
+  }
+
+  /** ใส่ข้อความลงใน node โดยเน้นคำที่ตรงกับคำค้น สร้างเป็น text node ทั้งหมด ไม่แปลงเป็น HTML */
+  function paint(node, text, mark) {
+    text.split(mark).forEach((piece, i) => {
+      if (!piece) return;
+      if (i % 2 === 0) return node.append(piece);
+      const hit = document.createElement('mark');
+      hit.textContent = piece;
+      node.append(hit);
+    });
+  }
+
+  function search() {
+    const words = tidy(query.value).toLowerCase().split(' ').filter(Boolean);
+    results.textContent = '';
+    shown = [];
+    picked = -1;
+    if (words.length === 0) {
+      note.textContent = 'พิมพ์คำที่อยากหา ค้นได้ทั้งชื่อกฎ เนื้อหากฎ คำพูดต้นฉบับ และคำอธิบายในทุกบท';
+      return;
+    }
+    // ต้องมีครบทุกคำ ผลที่คำค้นอยู่ในชื่อขึ้นก่อน ที่เหลือเรียงตามลำดับในเล่ม
+    const found = index
+      .filter((entry) => words.every((word) => entry.hay.includes(word)))
+      .map((entry, i) => ({
+        entry,
+        i,
+        score: entry.weight + (words.every((word) => entry.titleHay.includes(word)) ? 4 : 0),
+      }))
+      .sort((a, b) => b.score - a.score || a.i - b.i);
+    if (found.length === 0) {
+      note.textContent = `ไม่พบ "${tidy(query.value)}" ลองใช้คำที่สั้นลง หรือสะกดอีกแบบ`;
+      return;
+    }
+    note.textContent =
+      found.length > MAX_RESULTS
+        ? `พบ ${found.length} รายการ แสดง ${MAX_RESULTS} รายการแรก`
+        : `พบ ${found.length} รายการ`;
+
+    const mark = new RegExp(`(${words.map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})`, 'gi');
+    shown = found.slice(0, MAX_RESULTS).map((hit) => hit.entry);
+    shown.forEach((entry, i) => {
+      const row = document.createElement('a');
+      row.href = `#${entry.anchor.id}`;
+      row.dataset.i = i;
+      const line = (name, text, highlight) => {
+        if (!text) return;
+        const span = document.createElement('span');
+        span.className = name;
+        if (highlight) paint(span, text, mark);
+        else span.textContent = text;
+        row.append(span);
+      };
+      line('kind', entry.where && entry.where !== entry.title ? `${entry.kind} · ${entry.where}` : entry.kind);
+      line('name', entry.title, true);
+      line('text', excerpt(entry.body, words), true);
+      const li = document.createElement('li');
+      li.append(row);
+      results.append(li);
+    });
+    pick(0);
+  }
+
+  function pick(i) {
+    const rows = results.querySelectorAll('a');
+    rows.forEach((row, n) => row.classList.toggle('on', n === i));
+    picked = i;
+    if (rows[i]) rows[i].scrollIntoView({ block: 'nearest' });
+  }
+
+  /** เปิดแผ่นอ่านไปที่ชิ้นที่ค้นเจอ กางส่วนที่พับไว้ แล้วกะพริบให้เห็นว่าอยู่ตรงไหน */
+  function jump(entry) {
+    closeFinder(false);
+    go(`#${entry.anchor.id}`);
+    for (let fold = entry.el.closest('details'); fold; fold = fold.parentElement.closest('details')) fold.open = true;
+    if (entry.el !== entry.anchor) entry.el.scrollIntoView({ block: 'center' });
+    entry.el.classList.remove('hit');
+    void entry.el.offsetWidth; // ให้กะพริบซ้ำได้แม้เพิ่งกะพริบไป
+    entry.el.classList.add('hit');
+  }
+
+  function openFinder() {
+    if (finding || !finder) return;
+    if (!index) index = buildIndex();
+    finding = true;
+    askedFrom = document.activeElement;
+    finder.hidden = false;
+    // ระหว่างค้นหา ของข้างหลังกดไม่ได้และไม่รับโฟกัส
+    scene.inert = true;
+    reader.inert = true;
+    query.focus();
+    query.select();
+    search();
+  }
+
+  function closeFinder(restoreFocus = true) {
+    if (!finding) return;
+    finding = false;
+    finder.hidden = true;
+    scene.inert = reading;
+    reader.inert = false;
+    if (restoreFocus && askedFrom && askedFrom.focus) askedFrom.focus({ preventScroll: true });
+  }
+
+  if (finder) {
+    for (const button of document.querySelectorAll('[data-find]')) button.addEventListener('click', openFinder);
+    $('finder-close').addEventListener('click', () => closeFinder());
+    // กดที่ฉากหลังนอกกล่องค้นหา = ปิด
+    finder.addEventListener('click', (e) => {
+      if (e.target === finder) closeFinder();
+    });
+    query.addEventListener('input', search);
+    query.addEventListener('keydown', (e) => {
+      const count = shown.length;
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (count) pick((picked + (e.key === 'ArrowDown' ? 1 : count - 1)) % count);
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        if (shown[picked]) jump(shown[picked]);
+      }
+    });
+    results.addEventListener('click', (e) => {
+      const row = e.target.closest('a');
+      if (!row) return;
+      e.preventDefault();
+      jump(shown[Number(row.dataset.i)]);
+    });
+    reader.addEventListener('animationend', (e) => {
+      if (e.animationName === 'hit') e.target.classList.remove('hit');
+    });
+  }
 
   // ---------- เริ่มทำงาน ----------
 

@@ -405,6 +405,9 @@ function conflictEntry(conflict, { show, labels }) {
 
 // ---------- ฉาก 3 มิติ ----------
 
+const SEARCH_ICON =
+  '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>';
+
 /** กฎที่เพิ่งสอนล่าสุดกี่ข้อที่ได้ขึ้นไปลอยอยู่วงบนของฉาก */
 const RECENT_RULES = 8;
 
@@ -478,6 +481,9 @@ function scene({ chapters, labels, facts, shortcuts }) {
     <div class="top">
       <p class="wordmark">${brandMark()}</p>
       <nav class="actions" aria-label="ทางลัด">
+        <button class="find" type="button" data-find aria-label="ค้นหาในเล่ม">
+          ${SEARCH_ICON}<span>ค้นหาในเล่ม</span><kbd>/</kbd>
+        </button>
         ${shortcuts
           .filter((s) => s.icon && s.icon !== 'howto')
           .map((s) => `<a href="${s.href}">${s.title}</a>`)
@@ -562,6 +568,7 @@ ${scene({ chapters, labels: data.labels, facts, shortcuts })}
 <div class="bar">
   <a class="btn" id="close" href="#" aria-label="ปิดแล้วกลับไปที่ฉาก 3 มิติ">✕</a>
   <p class="where" id="where"></p>
+  <button class="btn" type="button" data-find aria-label="ค้นหาในเล่ม">${SEARCH_ICON}</button>
   <a class="btn" id="prev" aria-label="ส่วนก่อนหน้า">‹</a>
   <a class="btn" id="next" aria-label="ส่วนถัดไป">›</a>
 </div>
@@ -619,6 +626,18 @@ ${scene({ chapters, labels: data.labels, facts, shortcuts })}
 </main>
 </div>
 </div>
+<div class="finder" id="finder" hidden>
+  <div class="finder-box" role="dialog" aria-modal="true" aria-label="ค้นหาในเล่ม">
+    <div class="finder-bar">
+      ${SEARCH_ICON}
+      <input id="finder-input" type="search" placeholder="ค้นหากฎ หัวข้อ หรือคำในเล่ม" aria-label="คำที่ต้องการค้นหา"
+        autocomplete="off" spellcheck="false" enterkeyhint="search">
+      <button class="btn" type="button" id="finder-close" aria-label="ปิดการค้นหา">✕</button>
+    </div>
+    <p class="finder-note" id="finder-note" role="status"></p>
+    <ol class="finder-list" id="finder-list"></ol>
+  </div>
+</div>
 <script>
   // สั่งพิมพ์ / บันทึกเป็น PDF แล้วให้เนื้อหาที่พับไว้ออกมาครบ
   addEventListener('beforeprint', () => document.querySelectorAll('details').forEach((d) => (d.open = true)));
@@ -632,6 +651,7 @@ const HOWTO = `<aside class="howto" id="howto" data-sec="front">
     <h2>วิธีอ่านเล่มนี้</h2>
     <ul>
       <li>หน้าแรกเป็นฉาก 3 มิติ ลากเพื่อหมุนดูได้รอบทิศ แตะการ์ดของบทไหนก็เปิดอ่านบทนั้น อยากอ่านต่อกันทั้งเล่มหรือสั่งพิมพ์ให้กด "อ่านทั้งเล่ม"</li>
+      <li>หาเรื่องที่ต้องการได้จากช่อง "ค้นหาในเล่ม" หรือปุ่มแว่นขยาย พิมพ์คำแล้วกดผลที่ขึ้นมา จะเปิดไปที่กฎหรือย่อหน้านั้นเลย</li>
       <li>แต่ละบทเริ่มด้วยคำอธิบายที่ AI เรียบเรียงจากกฎทั้งหมดในบทนั้น ให้อ่านเข้าใจภาพรวมก่อน</li>
       <li>ท้ายบทคือรายการกฎทีละข้อ เลขอย่าง <span class="ref">1.2</span> คือบทที่ 1 ข้อที่ 2 กดเพื่อไปดูข้อนั้นได้</li>
       <li>เลขเล็ก ๆ มุมขวาของกฎ เช่น #12 คือเลขที่บอทใช้อ้างใน LINE เลขนี้ไม่เปลี่ยน ส่วนเลขบทอาจขยับเมื่อมีบทใหม่</li>
