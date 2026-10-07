@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import express from 'express';
 import { adminRouter } from './admin.js';
 import { sendAudio } from './audio.js';
-import { THREE_ASSETS } from './book-scene.js';
+import { STATIC_DIR } from './book-scene.js';
 import { audioSignature, bookSettings, renderBook } from './book.js';
 import { config } from './config.js';
 import { migrate } from './db.js';
@@ -88,8 +88,9 @@ app.get('/audio/:id', async (req, res) => {
   sendAudio(req, res, id);
 });
 
-// ไลบรารี 3 มิติของตัวการ์ตูนในหน้าหนังสือ ไฟล์ของรุ่นหนึ่ง ๆ ไม่มีวันเปลี่ยน จึงให้เบราว์เซอร์เก็บไว้ใช้ได้ยาว
-app.use(THREE_ASSETS.route, express.static(THREE_ASSETS.dir, { immutable: true, maxAge: '365d', index: false }));
+// ไฟล์ประกอบหน้าหนังสือ (รูปตัวการ์ตูน) ลิงก์ที่หน้าเว็บใช้มีรหัสของเนื้อไฟล์ต่อท้าย
+// เปลี่ยนไฟล์เมื่อไหร่ลิงก์ก็เปลี่ยนตาม จึงให้เบราว์เซอร์เก็บไว้ใช้ได้ยาว
+app.use('/static', express.static(STATIC_DIR, { immutable: true, maxAge: '365d', index: false }));
 
 // หน้าแรกเปิดหนังสือสรุปเลย ใครรู้โดเมนก็อ่านได้โดยไม่ต้องมี key
 app.get('/', (_req, res) => sendBook(res));

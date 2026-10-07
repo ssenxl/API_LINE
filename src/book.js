@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { SCENE_SCRIPT, SCENE_STYLE, THEME_STYLE, THREE_ASSETS, layoutScene, swatch } from './book-scene.js';
+import { MASCOT_URL, SCENE_SCRIPT, SCENE_STYLE, THEME_STYLE, layoutScene, swatch } from './book-scene.js';
 import { CHAPTER_PROMPT_VERSION, writeChapter } from './brain.js';
 import { config } from './config.js';
 import * as kb from './knowledge.js';
@@ -450,7 +450,7 @@ function scene({ chapters, labels, facts, shortcuts }) {
   <div class="sky"><div class="dyes" id="dyes"></div></div>
   <canvas class="threads" id="threads" aria-hidden="true"></canvas>
   <div class="stage" id="stage" data-radius="${layout.radius}" data-rings="${layout.rings.join(',')}"
-      data-three="${THREE_ASSETS.module}">
+      data-mascot="${MASCOT_URL}">
     <nav class="world" id="world" style="--r:${layout.radius}px" aria-label="เลือกส่วนที่จะอ่าน">
       ${[...chapterCards, ...ruleCards, ...linkCards].join('\n')}
     </nav>
