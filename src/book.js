@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { SCENE_SCRIPT, SCENE_STYLE, layoutScene, swatch } from './book-scene.js';
 import { CHAPTER_PROMPT_VERSION, writeChapter } from './brain.js';
 import { config } from './config.js';
 import * as kb from './knowledge.js';
@@ -175,6 +176,9 @@ const ruleRef = (id, labels) => `<a class="ref" href="#rule-${id}">${labels.get(
 // (?<!&) กันไม่ให้ไปแตะ &#39; ที่ได้จากการ escape เครื่องหมาย '
 const linkRules = (html, labels) => html.replace(/(?<!&)#(\d+)/g, (_m, id) => ruleRef(Number(id), labels));
 
+/** แบบเดียวกันแต่ไม่ทำเป็นลิงก์ ใช้บนการ์ดในฉาก 3 มิติที่ทั้งใบเป็นลิงก์อยู่แล้ว */
+const labelRules = (html, labels) => html.replace(/(?<!&)#(\d+)/g, (_m, id) => labels.get(Number(id)) ?? `#${id}`);
+
 const BULLET = /^(?:[-•]|\d+[.)])\s+/;
 
 /**
@@ -324,7 +328,8 @@ function chapterSection(chapter, index, data) {
          .join('')}`
     : `<p class="note">ยังเรียบเรียงบทนี้ไม่สำเร็จ ลองเปิดหน้านี้ใหม่อีกครั้ง ระหว่างนี้อ่านจากรายการกฎด้านล่างได้</p>`;
 
-  return `<section class="chapter" id="ch-${index + 1}">
+  return `<section class="chapter" id="ch-${index + 1}" data-sec="ch-${index + 1}"
+      data-title="บทที่ ${index + 1} · ${escape(chapter.topic)}">
     <p class="eyebrow">บทที่ ${index + 1}</p>
     <h2>${escape(chapter.topic)}</h2>
     ${body}
@@ -381,6 +386,91 @@ function conflictEntry(conflict, { show, labels }) {
   </article>`;
 }
 
+// ---------- ฉาก 3 มิติ ----------
+
+/** กฎที่เพิ่งสอนล่าสุดกี่ข้อที่ได้ขึ้นไปลอยอยู่วงบนของฉาก */
+const RECENT_RULES = 8;
+
+const ICONS = {
+  toc: 'M5 7h.01M9 7h10M5 12h.01M9 12h10M5 17h.01M9 17h10',
+  howto:
+    'M12 6.5c-2.2-1.6-5.3-1.6-8 0v11c2.7-1.6 5.8-1.6 8 0m0-11c2.2-1.6 5.3-1.6 8 0v11c-2.7-1.6-5.8-1.6-8 0m0-11v11',
+  all: 'M7 4h10a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1zM9.5 9h5M9.5 12h5M9.5 15h3',
+};
+
+/**
+ * หน้าแรกที่หมุนดูได้รอบทิศ การ์ดทุกใบคือลิงก์ไปยังส่วนหนึ่งของเล่ม (#ch-1, #rule-12, #toc ...)
+ * บททุกบทมีการ์ดของตัวเอง ส่วนกฎล่าสุดกับทางลัดจะขึ้นเท่าที่ฉากมีที่ให้วาง
+ */
+function scene({ chapters, labels, facts, shortcuts }) {
+  const chapterOf = new Map(chapters.flatMap((chapter, i) => chapter.rules.map((rule) => [rule.id, i])));
+  const recent = chapters
+    .flatMap((chapter) => chapter.rules)
+    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+    .slice(0, RECENT_RULES);
+  const layout = layoutScene({ rule: recent.length, chapter: chapters.length, link: shortcuts.length });
+  const at = ({ lon, lat, tilt }) =>
+    `style="--lon:${lon}deg;--lat:${lat}deg;--tilt:${tilt}deg" data-lon="${lon}" data-lat="${lat}" data-tilt="${tilt}" draggable="false"`;
+
+  const chapterCards = chapters.map(
+    (chapter, i) => `<a class="card is-chapter" href="#ch-${i + 1}" ${at(layout.chapter[i])}><span class="face">
+      <span ${swatch(i)}>
+        <span class="tag">${chapter.rules.length} ข้อ</span>
+        <span class="no">${String(i + 1).padStart(2, '0')}</span>
+      </span>
+      <span class="kicker">บทที่ ${i + 1}</span>
+      <strong class="name">${escape(chapter.topic)}</strong>
+      <span class="blurb">${labelRules(escape(chapter.content?.overview || chapter.rules[0].summary), labels)}</span>
+      <span class="more">เปิดอ่าน <span aria-hidden="true">→</span></span>
+    </span></a>`,
+  );
+
+  const ruleCards = layout.rule.map((spot, i) => {
+    const rule = recent[i];
+    const chapter = chapterOf.get(rule.id);
+    return `<a class="card is-rule" href="#rule-${rule.id}" ${at(spot)}><span class="face">
+      <span ${swatch(chapter)}>${labels.get(rule.id)}</span>
+      <span class="txt">
+        <strong class="name">${escape(rule.title)}</strong>
+        <span class="sub">บทที่ ${chapter + 1} · ${date(rule.created_at)}</span>
+      </span>
+    </span></a>`;
+  });
+
+  const linkCards = layout.link.map((spot, i) => {
+    const { href, title, sub, count, icon } = shortcuts[i];
+    return `<a class="card is-link" href="${href}" ${at(spot)}><span class="face">
+      <span class="big">${count ?? `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${ICONS[icon]}"/></svg>`}</span>
+      <strong class="name">${title}</strong>
+      ${sub ? `<span class="sub">${sub}</span>` : ''}
+    </span></a>`;
+  });
+
+  return `<div class="scene">
+  <div class="sky"><div class="dyes" id="dyes"></div></div>
+  <canvas class="threads" id="threads" aria-hidden="true"></canvas>
+  <div class="stage" id="stage" data-radius="${layout.radius}" data-rings="${layout.rings.join(',')}">
+    <nav class="world" id="world" style="--r:${layout.radius}px" aria-label="เลือกส่วนที่จะอ่าน">
+      ${[...chapterCards, ...ruleCards, ...linkCards].join('\n')}
+    </nav>
+  </div>
+  <header class="hud">
+    <div class="top">
+      <p class="wordmark">${escape(config.book.brand)}</p>
+      <nav class="actions" aria-label="ทางลัด">
+        ${shortcuts
+          .filter((s) => s.icon && s.icon !== 'howto')
+          .map((s) => `<a href="${s.href}">${s.title}</a>`)
+          .join('')}
+      </nav>
+      <h1>${escape(config.book.title)}</h1>
+      <p class="facts">${facts}</p>
+    </div>
+    <p class="hint" id="hint">ลากเพื่อหมุน · ซูมได้ · แตะการ์ดเพื่ออ่าน</p>
+  </header>
+</div>`;
+}
+
 function page(data, chapters) {
   const { show } = data;
   data.rulesById = new Map(data.rules.map((r) => [r.id, r]));
@@ -391,6 +481,7 @@ function page(data, chapters) {
   const conflicts = [...data.conflicts].reverse();
   const openConflicts = show.open ? conflicts.filter((c) => c.status === 'open') : [];
   const closedConflicts = show.decisions ? conflicts.filter((c) => c.status !== 'open') : [];
+  const empty = 'ยังไม่มีความรู้ในเล่ม เริ่มเล่ากฎหรือวิธีทำงานให้บอทฟังผ่าน LINE ได้เลย';
 
   const toc = [
     ...chapters.map(
@@ -408,23 +499,54 @@ function page(data, chapters) {
 
   const main =
     chapters.length === 0
-      ? `<p class="note">ยังไม่มีความรู้ในเล่ม เริ่มเล่ากฎหรือวิธีทำงานให้บอทฟังผ่าน LINE ได้เลย</p>`
+      ? `<p class="note" data-sec="front">${empty}</p>`
       : chapters.map((c, i) => chapterSection(c, i, data)).join('');
+
+  const hasToc = Boolean(chapters.length || toc);
+  const shortcuts = [
+    hasToc && { href: '#toc', icon: 'toc', title: 'สารบัญ', sub: `${chapters.length} บท` },
+    show.howto && { href: '#howto', icon: 'howto', title: 'วิธีอ่านเล่มนี้' },
+    openConflicts.length && { href: '#open', count: openConflicts.length, title: 'เรื่องที่รอคำตอบ' },
+    closedConflicts.length && {
+      href: '#decisions',
+      count: closedConflicts.length,
+      title: 'ข้อขัดแย้งที่เคยตัดสิน',
+      sub: 'ภาคผนวก ก',
+    },
+    retired.length && { href: '#retired', count: retired.length, title: 'กฎที่เลิกใช้แล้ว', sub: 'ภาคผนวก ข' },
+    { href: '#all', icon: 'all', title: 'อ่านทั้งเล่ม', sub: 'เรียงต่อกัน พิมพ์ได้' },
+  ].filter(Boolean);
+  const facts = chapters.length
+    ? [`${activeCount} กฎที่ใช้อยู่`, `${chapters.length} บท`, show.authors && `${teachers} ผู้สอน`]
+        .filter(Boolean)
+        .join(' · ')
+    : empty;
 
   return `<!doctype html>
 <html lang="th">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>${escape(config.book.title)}</title>
+<script>document.documentElement.classList.add('js');</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap" rel="stylesheet">
-<style>${STYLE}</style>
+<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&family=Trirong:wght@500;600&display=swap" rel="stylesheet">
+<style>${STYLE}${SCENE_STYLE}</style>
 </head>
-<body>
+<body class="book">
+${scene({ chapters, labels: data.labels, facts, shortcuts })}
+<div class="scrim" id="scrim"></div>
+<div class="reader" id="reader" tabindex="-1" aria-label="เนื้อหาในเล่ม">
+<div class="bar">
+  <a class="btn" id="close" href="#" aria-label="ปิดแล้วกลับไปที่ฉาก 3 มิติ">✕</a>
+  <p class="where" id="where"></p>
+  <a class="btn" id="prev" aria-label="ส่วนก่อนหน้า">‹</a>
+  <a class="btn" id="next" aria-label="ส่วนถัดไป">›</a>
+</div>
+<div class="sheet" id="sheet">
 <main>
-  <header class="cover">
+  <header class="cover" id="cover" data-sec="front" data-title="ปกและสารบัญ">
     <p class="eyebrow">ความรู้ที่ทีมสอนผ่าน LINE</p>
     <h1>${escape(config.book.title)}</h1>
     <p class="stats">
@@ -437,12 +559,12 @@ function page(data, chapters) {
 
   ${show.howto ? HOWTO : ''}
 
-  ${chapters.length || toc ? `<nav class="toc"><h2>สารบัญ</h2><ol>${toc}</ol></nav>` : ''}
+  ${hasToc ? `<nav class="toc" id="toc" data-sec="front"><h2>สารบัญ</h2><ol>${toc}</ol></nav>` : ''}
   ${main}
 
   ${
     openConflicts.length
-      ? `<section class="chapter" id="open">
+      ? `<section class="chapter" id="open" data-sec="open" data-title="เรื่องที่รอคำตอบ">
           <p class="eyebrow">ยังไม่ได้ข้อสรุป</p>
           <h2>เรื่องที่รอคำตอบ</h2>
           <p>เรื่องเหล่านี้มีคนสอนมาแต่ขัดกับของเดิม บอทถามกลับไปแล้วและยังรอคำตอบ จึงยังไม่ได้บันทึกเป็นกฎ</p>
@@ -453,7 +575,7 @@ function page(data, chapters) {
 
   ${
     closedConflicts.length
-      ? `<section class="chapter" id="decisions">
+      ? `<section class="chapter" id="decisions" data-sec="decisions" data-title="ภาคผนวก ก · ข้อขัดแย้งที่เคยตัดสิน">
           <p class="eyebrow">ภาคผนวก ก</p>
           <h2>ข้อขัดแย้งที่เคยตัดสิน</h2>
           <p>บันทึกว่าเคยมีความเห็นไม่ตรงกันเรื่องอะไร ใครตอบว่าอย่างไร และสรุปออกมาแบบไหน</p>
@@ -464,7 +586,7 @@ function page(data, chapters) {
 
   ${
     retired.length
-      ? `<section class="chapter" id="retired">
+      ? `<section class="chapter" id="retired" data-sec="retired" data-title="ภาคผนวก ข · กฎที่เลิกใช้แล้ว">
           <p class="eyebrow">ภาคผนวก ข</p>
           <h2>กฎที่เลิกใช้แล้ว</h2>
           <p>เก็บไว้ให้รู้ว่าเคยทำแบบนี้ ห้ามนำไปใช้ ให้ดูกฎฉบับปัจจุบันในบทต่าง ๆ แทน</p>
@@ -473,19 +595,23 @@ function page(data, chapters) {
       : ''
   }
 </main>
+</div>
+</div>
 <script>
   // สั่งพิมพ์ / บันทึกเป็น PDF แล้วให้เนื้อหาที่พับไว้ออกมาครบ
   addEventListener('beforeprint', () => document.querySelectorAll('details').forEach((d) => (d.open = true)));
+  ${SCENE_SCRIPT}
 </script>
 </body>
 </html>`;
 }
 
-const HOWTO = `<aside class="howto">
+const HOWTO = `<aside class="howto" id="howto" data-sec="front">
     <h2>วิธีอ่านเล่มนี้</h2>
     <ul>
+      <li>หน้าแรกเป็นฉาก 3 มิติ ลากเพื่อหมุนดูได้รอบทิศ แตะการ์ดของบทไหนก็เปิดอ่านบทนั้น อยากอ่านต่อกันทั้งเล่มหรือสั่งพิมพ์ให้กด "อ่านทั้งเล่ม"</li>
       <li>แต่ละบทเริ่มด้วยคำอธิบายที่ AI เรียบเรียงจากกฎทั้งหมดในบทนั้น ให้อ่านเข้าใจภาพรวมก่อน</li>
-      <li>ท้ายบทคือรายการกฎทีละข้อ เลขอย่าง <a class="ref" href="#">1.2</a> คือบทที่ 1 ข้อที่ 2 กดเพื่อไปดูข้อนั้นได้</li>
+      <li>ท้ายบทคือรายการกฎทีละข้อ เลขอย่าง <span class="ref">1.2</span> คือบทที่ 1 ข้อที่ 2 กดเพื่อไปดูข้อนั้นได้</li>
       <li>เลขเล็ก ๆ มุมขวาของกฎ เช่น #12 คือเลขที่บอทใช้อ้างใน LINE เลขนี้ไม่เปลี่ยน ส่วนเลขบทอาจขยับเมื่อมีบทใหม่</li>
       <li>กด "คำพูดต้นฉบับ" เพื่ออ่านสิ่งที่ผู้สอนพิมพ์มาจริง ๆ ถ้าคำสรุปของ AI กับต้นฉบับไม่ตรงกัน ให้ถือต้นฉบับเป็นหลัก</li>
       <li>กล่องสีเหลืองท้ายบทคือช่องโหว่ที่บอทถามผู้สอนใน LINE ไปแล้วและยังไม่ได้คำตอบ ใครรู้คำตอบช่วยตอบในแชทได้เลย</li>
@@ -561,7 +687,7 @@ a { color: var(--accent); }
 .badge { font-size: .78rem; padding: 1px 8px; border-radius: 999px; background: var(--line); color: var(--muted); }
 .badge.warn { background: var(--warn-soft); color: var(--warn); }
 .badge.ok { background: var(--ok-soft); color: var(--ok); }
-.ref { text-decoration: none; font-weight: 600; background: var(--accent-soft); padding: 0 5px; border-radius: 4px; }
+.ref { color: var(--accent); text-decoration: none; font-weight: 600; background: var(--accent-soft); padding: 0 5px; border-radius: 4px; }
 details { margin-top: 8px; }
 summary { cursor: pointer; color: var(--accent); font-size: .92rem; }
 blockquote { margin: 8px 0; padding: 10px 14px; background: var(--quote); border-left: 3px solid var(--accent); border-radius: 0 8px 8px 0; }
