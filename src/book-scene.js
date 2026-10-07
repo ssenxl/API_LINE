@@ -1,14 +1,34 @@
 /**
  * ฉาก 3 มิติของหน้าหนังสือ
  *
- * การ์ดแก้วลอยเป็นวงรอบคนที่ยืนอยู่กลางฉาก (ร่างคนถักขึ้นจากเส้นด้ายเรืองแสง) ลากเพื่อหมุนดูได้รอบทิศ
+ * การ์ดแก้วลอยเป็นวงรอบตัวการ์ตูนที่ยืนอยู่กลางฉาก ลากเพื่อหมุนดูได้รอบทิศ
  * แตะการ์ดแล้วเนื้อหาส่วนนั้นเลื่อนเข้ามาให้อ่าน
- * ใช้ CSS 3D กับ canvas ธรรมดา ไม่พึ่งไลบรารีภายนอก หน้าหนังสือจึงยังเป็น HTML ก้อนเดียวเหมือนเดิม
+ * การ์ดใช้ CSS 3D เส้นด้ายใช้ canvas ธรรมดา ส่วนตัวการ์ตูนวาดด้วย three.js ที่เสิร์ฟจาก node_modules ของเราเอง
  *
  * ถ้าเบราว์เซอร์ปิด JavaScript หรือสั่งพิมพ์ ฉากนี้จะถูกซ่อน เหลือหนังสือเรียงต่อกันทั้งเล่มแบบเดิม
  *
  * ไฟล์นี้ยังเก็บธีม (สี ตัวอักษร พื้นหลังน้ำย้อม ผ้าตัวอย่าง) ที่หน้าผู้ดูแลใช้ร่วมด้วย ทั้งสองหน้าจะได้หน้าตาชุดเดียวกัน
  */
+
+import fs from 'node:fs';
+import { createRequire } from 'node:module';
+import path from 'node:path';
+
+// ---------- three.js ----------
+
+const require = createRequire(import.meta.url);
+const threeBuild = path.dirname(require.resolve('three'));
+const threeVersion = JSON.parse(fs.readFileSync(path.join(threeBuild, '../package.json'), 'utf8')).version;
+
+/**
+ * three.js ที่ใช้วาดตัวการ์ตูนกลางฉาก เสิร์ฟจาก node_modules ของเราเอง ไม่พึ่ง CDN ภายนอก
+ * path มีเลขรุ่นกำกับ เบราว์เซอร์จึงเก็บไฟล์ไว้ใช้ได้ยาวโดยไม่ต้องถามเซิร์ฟเวอร์ซ้ำ
+ */
+export const THREE_ASSETS = {
+  route: `/vendor/three@${threeVersion}`,
+  dir: threeBuild,
+  module: `/vendor/three@${threeVersion}/three.module.js`,
+};
 
 // ---------- จัดวางการ์ด ----------
 
@@ -235,8 +255,9 @@ export const SCENE_STYLE = `
 .stage.dragging { cursor: grabbing; }
 @keyframes arrive { from { opacity: 0; } }
 .world { position: absolute; left: 50%; top: 52%; transform-style: preserve-3d; }
-/* คนที่ยืนอยู่กลางฉาก สคริปต์วาดและหมุนให้หันเข้าหากล้องเอง */
-.figure { position: absolute; pointer-events: none; }
+/* ตัวการ์ตูนกลางฉาก สคริปต์วาดและหมุนแผ่นให้หันเข้าหากล้องเอง ค่อย ๆ ปรากฏเมื่อโหลดเสร็จ */
+.figure { position: absolute; pointer-events: none; opacity: 0; transition: opacity .7s; }
+.figure.on { opacity: 1; }
 
 /* ---------- การ์ดแก้ว ---------- */
 ${sizes}
@@ -257,7 +278,7 @@ ${sizes}
 .card.back .face { transform: scaleX(-1); }
 .card.far { filter: blur(2.4px); }
 .dense .card.far { visibility: hidden; }
-/* การ์ดที่หันมาด้านหน้าต้องอ่านออกแม้มีคนยืนอยู่ข้างหลัง: จอสัมผัสใช้แก้วทึบขึ้นแต่ยังเห็นคนราง ๆ (เบา ไม่กินแรงเครื่อง)
+/* การ์ดที่หันมาด้านหน้าต้องอ่านออกแม้มีตัวการ์ตูนอยู่ข้างหลัง: จอสัมผัสใช้แก้วทึบขึ้นแต่ยังเห็นราง ๆ (เบา ไม่กินแรงเครื่อง)
    ส่วนเครื่องที่ใช้เมาส์เบลอฉากหลังจริง ๆ */
 .card.near { background-color: var(--glass-near); }
 @media (hover: hover) and (pointer: fine) {
@@ -471,10 +492,9 @@ function sceneClient() {
     dpr = Math.min(window.devicePixelRatio || 1, 2);
     canvas.width = Math.round(width * dpr);
     canvas.height = Math.round(height * dpr);
-    // แผ่นใสของตัวคนถูกย่อตามระยะกล้อง จึงใช้จุดภาพเท่าที่จะเห็นจริงบนจอ (เผื่อซูมเข้าอีกหน่อย)
+    // แผ่นใสของตัวการ์ตูนถูกย่อตามระยะกล้อง จึงใช้จุดภาพเท่าที่จะเห็นจริงบนจอ (เผื่อซูมเข้าอีกหน่อย)
     figureScale = clamp((dpr * 1.25 * P) / (R + P / fitScale), 0.4, 2.5);
-    figure.width = Math.round(PLANE.w * figureScale);
-    figure.height = Math.round(PLANE.h * figureScale);
+    if (mascot) mascot.resize();
     touch();
   }
 
@@ -543,7 +563,11 @@ function sceneClient() {
       }
     }
 
-    // แถบแสงบนตัวคนและจุดแสงบนเส้นด้ายขยับอยู่ตลอด จึงต้องวาดใหม่ทุกเฟรม
+    // ตัวการ์ตูนค่อย ๆ หันตามมาหาผู้ชม ลากฉากเร็ว ๆ จึงได้เห็นด้านข้างหรือด้านหลังก่อนที่เขาจะหันกลับมา
+    const want = -view.yaw * RAD;
+    const gap = Math.atan2(Math.sin(want - mascotYaw), Math.cos(want - mascotYaw));
+    mascotYaw = still.matches ? want : mascotYaw + gap * (1 - Math.exp(-dt * 2.6));
+    // ตัวการ์ตูนและจุดแสงบนเส้นด้ายขยับอยู่ตลอด จึงต้องวาดใหม่ทุกเฟรม
     if (!still.matches && !reading) moving = dirty = true;
     if (dirty) render(now);
     if (moving) kick();
@@ -580,7 +604,7 @@ function sceneClient() {
     draw(depth, now);
   }
 
-  // ---------- เส้นในฉาก: คนยืนกลางฉาก วงแหวนที่พื้น และด้ายที่ร้อยการ์ด ----------
+  // ---------- เส้นในฉาก: ด้ายที่ร้อยการ์ด และวงแหวนที่พื้น ----------
 
   const ctx = canvas.getContext('2d');
   const BUCKETS = 6;
@@ -615,111 +639,23 @@ function sceneClient() {
     return { r, y, pts: loop(0, y, 0, r, r, 96) };
   });
 
-  // ความสูงของคนวัดจากแถวการ์ด: ศีรษะอยู่ใต้แถวกฎล่าสุดพอดี (ไม่ให้การ์ดแถวบนบังหน้า) เท้าอยู่ต่ำกว่าแถวทางลัด
+  // ตัวการ์ตูนยืนอยู่ในช่วงความสูงของแถวบท: ศีรษะอยู่ใต้แถวกฎล่าสุด เท้าอยู่เหนือแถวทางลัด
+  // การ์ดสองแถวนั้นจึงไม่บังตัว มีแต่การ์ดบทที่หมุนผ่านหน้าไป
   const rowY = (selector) =>
     [...world.querySelectorAll(selector)].map((el) => -R * Math.sin(Number(el.dataset.lat) * RAD));
   const chapterY = rowY('.is-chapter');
   const ruleY = rowY('.is-rule');
   const linkY = rowY('.is-link');
-  let HEAD = -R * 0.62;
-  let FEET = R * 0.62;
+  let HEAD = -R * 0.5;
+  let FEET = R * 0.45;
   if (chapterY.length) {
-    HEAD = ruleY.length ? ruleY[0] + 24 : Math.min(...chapterY) - 256;
-    FEET = linkY.length ? linkY[0] + 110 : Math.max(...chapterY) + 246;
+    HEAD = ruleY.length ? ruleY[0] + 56 : Math.min(...chapterY) - 206;
+    FEET = linkY.length ? linkY[0] - 78 : Math.max(...chapterY) + 206;
   }
   const TALL = FEET - HEAD;
   const MID = (HEAD + FEET) / 2;
-
-  // รูปร่างคน: แต่ละส่วนคือท่อที่หน้าตัดเป็นวงรี ไล่จากบนลงล่าง ทุกค่าเป็นสัดส่วนของความสูง
-  // [สูงจากพื้น, ห่างจากกลางตัว, เยื้องไปข้างหน้า, กว้างครึ่งหนึ่ง, หนาครึ่งหนึ่ง]
-  const TRUNK = [
-    [0.998, 0, 0, 0.008, 0.009],
-    [0.99, 0, 0, 0.026, 0.03],
-    [0.974, 0, 0, 0.043, 0.05],
-    [0.95, 0, 0, 0.055, 0.063],
-    [0.93, 0, 0, 0.057, 0.066],
-    [0.905, 0, 0.002, 0.053, 0.062],
-    [0.885, 0, 0.004, 0.044, 0.052],
-    [0.872, 0, 0.004, 0.033, 0.038], // คาง
-    [0.86, 0, 0, 0.028, 0.031], // คอ
-    [0.846, 0, 0, 0.032, 0.034],
-    [0.836, 0, 0, 0.06, 0.04], // บ่า
-    [0.824, 0, 0, 0.09, 0.047], // ไหล่
-    [0.79, 0, 0.004, 0.096, 0.06], // อก
-    [0.73, 0, 0.004, 0.09, 0.062],
-    [0.66, 0, 0, 0.077, 0.052], // เอว
-    [0.61, 0, 0, 0.078, 0.053],
-    [0.555, 0, 0, 0.09, 0.061], // สะโพก
-    [0.51, 0, 0, 0.094, 0.063],
-    [0.48, 0, 0, 0.086, 0.058],
-    [0.466, 0, 0, 0.06, 0.048],
-  ];
-  const LEG = [
-    [0.49, 0.047, 0, 0.044, 0.05],
-    [0.4, 0.05, 0, 0.041, 0.047],
-    [0.31, 0.051, 0, 0.032, 0.036],
-    [0.27, 0.051, 0.002, 0.03, 0.034], // เข่า
-    [0.2, 0.052, -0.004, 0.032, 0.038], // น่อง
-    [0.11, 0.054, -0.002, 0.023, 0.027],
-    [0.05, 0.055, 0, 0.019, 0.023], // ข้อเท้า
-    [0.028, 0.056, 0.016, 0.023, 0.042], // หลังเท้า
-    [0.004, 0.057, 0.024, 0.027, 0.056], // ฝ่าเท้า
-  ];
-  const ARM = [
-    [0.826, 0.106, 0, 0.022, 0.03],
-    [0.8, 0.116, 0, 0.027, 0.031], // หัวไหล่
-    [0.71, 0.126, 0, 0.024, 0.027],
-    [0.64, 0.132, -0.002, 0.021, 0.023], // ศอก
-    [0.56, 0.138, 0.006, 0.02, 0.021],
-    [0.49, 0.143, 0.014, 0.015, 0.017], // ข้อมือ
-    [0.455, 0.145, 0.017, 0.014, 0.024], // มือ
-    [0.41, 0.146, 0.019, 0.009, 0.017],
-  ];
-  const SLICE = 0.0125;
-  const person = []; // เส้นทั้งหมดของตัวคน
-  const slices = []; // เฉพาะเส้นแนวนอน พร้อมความสูง ใช้กับแถบแสงที่กวาดขึ้นตามตัว
-
-  /** สร้างท่อหนึ่งส่วนของร่างกาย side = -1 ซ้าย, 1 ขวา, 0 กลางตัว */
-  function limb(keys, side, n, ribs) {
-    const rings = [];
-    for (let y = keys[0][0]; y > keys[keys.length - 1][0] - SLICE / 2; y -= SLICE) {
-      let k = 1;
-      while (k < keys.length - 1 && keys[k][0] > y) k++;
-      const a = keys[k - 1];
-      const b = keys[k];
-      const f = clamp((a[0] - y) / (a[0] - b[0]), 0, 1);
-      const at = (i) => (a[i] + (b[i] - a[i]) * f) * TALL;
-      const pts = loop(side * at(1), FEET - y * TALL, at(2), at(3), at(4), n);
-      rings.push(pts);
-      slices.push({ y, pts });
-    }
-    person.push(...rings);
-    // เส้นตั้งเชื่อมวงแต่ละชั้น ให้เห็นเป็นผิวของตัวคน
-    for (let r = 0; r < ribs; r++) {
-      const i = Math.round((r / ribs) * n) * 3;
-      const rib = new Float32Array(rings.length * 3);
-      rings.forEach((ring, j) => rib.set(ring.subarray(i, i + 3), j * 3));
-      person.push(rib);
-    }
-  }
-  limb(TRUNK, 0, 28, 8);
-  for (const side of [-1, 1]) {
-    limb(LEG, side, 14, 4);
-    limb(ARM, side, 12, 4);
-  }
   // วงแหวนบนพื้นใต้เท้า
-  const floor = [0.16, 0.22, 0.28].map((r) => loop(0, FEET, 0, r * TALL, r * TALL, 96));
-
-  // ตัวคนวาดลงบนแผ่นใสที่ตั้งอยู่กลางฉากและหันเข้าหากล้องเสมอ
-  // เบราว์เซอร์จึงเรียงให้เองว่าการ์ดใบไหนอยู่หน้าคน ใบไหนอยู่หลังคน
-  const PLANE = { w: TALL * 0.62, h: TALL * 1.2 };
-  const figure = document.createElement('canvas');
-  figure.className = 'figure';
-  figure.setAttribute('aria-hidden', 'true');
-  figure.style.cssText = `width:${PLANE.w}px;height:${PLANE.h}px;left:${-PLANE.w / 2}px;top:${MID - PLANE.h / 2}px`;
-  world.prepend(figure);
-  const pen = figure.getContext('2d');
-  let figureScale = 1; // จุดภาพของแผ่นใสต่อหนึ่งหน่วยของฉาก
+  const floor = [0.3, 0.38, 0.46].map((r) => loop(0, FEET, 0, r * TALL, r * TALL, 96));
 
   let tone = { rgb: '103, 232, 249', halo: 0.2, blend: 'lighter' };
   function readTone() {
@@ -729,14 +665,14 @@ function sceneClient() {
       halo: Number(style.getPropertyValue('--halo')) || tone.halo,
       blend: style.getPropertyValue('--blend').trim() || tone.blend,
     };
+    if (mascot) mascot.tint();
     touch();
   }
 
-  /**
-   * วาดเส้น 3 มิติลงบนผืนผ้าใบ เส้นที่อยู่ใกล้กล้องสว่างและหนากว่าเส้นที่อยู่ไกล
-   * frame บอกว่าผืนผ้าใบนี้วางอยู่ตรงไหน: จุดกลาง (cx, cy), อัตราย่อ s และ px = หนึ่งจุดบนจอเท่ากับกี่หน่วยของผืนนี้
-   */
-  function strokeLines(g, lines, m, frame, zFar, zNear, look) {
+  /** วาดเส้น 3 มิติลงบนผืนผ้าใบพื้นหลัง เส้นที่อยู่ใกล้กล้องสว่างและหนากว่าเส้นที่อยู่ไกล */
+  function strokeLines(lines, m, depth, look) {
+    const ox = world.offsetLeft;
+    const oy = world.offsetTop;
     for (const bucket of buckets) bucket.length = 0;
     for (const pts of lines) {
       let px = 0;
@@ -744,11 +680,11 @@ function sceneClient() {
       let pz = 0;
       for (let i = 0; i < pts.length; i += 3) {
         const z = m[6] * pts[i] + m[7] * pts[i + 1] + m[8] * pts[i + 2];
-        const k = (P / (P - z - frame.depth)) * frame.s;
-        const x = frame.cx + (m[0] * pts[i] + m[1] * pts[i + 1] + m[2] * pts[i + 2]) * k;
-        const y = frame.cy + (m[3] * pts[i] + m[4] * pts[i + 1] + m[5] * pts[i + 2]) * k;
+        const k = P / (P - z - depth);
+        const x = ox + (m[0] * pts[i] + m[1] * pts[i + 1] + m[2] * pts[i + 2]) * k;
+        const y = oy + (m[3] * pts[i] + m[4] * pts[i + 1] + m[5] * pts[i + 2]) * k;
         if (i > 0) {
-          const b = clamp(Math.floor((((pz + z) / 2 - zFar) / (zNear - zFar)) * BUCKETS), 0, BUCKETS - 1);
+          const b = clamp(Math.floor((((pz + z) / 2 + R) / (2 * R)) * BUCKETS), 0, BUCKETS - 1);
           buckets[b].push(px, py, x, y);
         }
         px = x;
@@ -759,23 +695,202 @@ function sceneClient() {
     for (let b = 0; b < BUCKETS; b++) {
       const t = b / (BUCKETS - 1);
       const segments = buckets[b];
-      g.globalAlpha = look.far + (look.near - look.far) * t * t;
-      g.lineWidth = (look.thin + (look.thick - look.thin) * t) * frame.px;
-      g.beginPath();
+      ctx.globalAlpha = look.far + (look.near - look.far) * t * t;
+      ctx.lineWidth = look.thin + (look.thick - look.thin) * t;
+      ctx.beginPath();
       for (let i = 0; i < segments.length; i += 4) {
-        g.moveTo(segments[i], segments[i + 1]);
-        g.lineTo(segments[i + 2], segments[i + 3]);
+        ctx.moveTo(segments[i], segments[i + 1]);
+        ctx.lineTo(segments[i + 2], segments[i + 3]);
       }
-      g.stroke();
+      ctx.stroke();
     }
+  }
+
+  // ---------- ตัวการ์ตูนกลางฉาก ----------
+
+  // วาดด้วย three.js ลงบนแผ่นใสที่ตั้งอยู่กลางฉากและหันเข้าหากล้องเสมอ
+  // เบราว์เซอร์จึงเรียงให้เองว่าการ์ดใบไหนอยู่หน้าตัวการ์ตูน ใบไหนอยู่หลัง
+  const PLANE = { w: TALL * 0.95, h: TALL * 1.25 };
+  const figure = document.createElement('canvas');
+  figure.className = 'figure';
+  figure.setAttribute('aria-hidden', 'true');
+  figure.style.cssText = `width:${PLANE.w}px;height:${PLANE.h}px;left:${-PLANE.w / 2}px;top:${MID - PLANE.h / 2}px`;
+  world.prepend(figure);
+  let figureScale = 1; // จุดภาพของแผ่นใสต่อหนึ่งหน่วยของฉาก
+  let mascot = null;
+  let mascotYaw = 0; // ตัวการ์ตูนหันหน้าไปทางไหนเทียบกับฉาก (เรเดียน)
+
+  /**
+   * ปั้นตัวการ์ตูนจากรูปทรงพื้นฐาน สูง 1 หน่วย เท้าอยู่ที่ y = 0 หันหน้าไปทาง +z
+   * ไม่ใช้ไฟล์โมเดล จะเปลี่ยนสีหรือสัดส่วนแก้ตัวเลขในนี้ได้เลย
+   */
+  function buildMascot(THREE) {
+    const renderer = new THREE.WebGLRenderer({ canvas: figure, alpha: true, antialias: true });
+    renderer.setPixelRatio(1);
+    const scene3 = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera();
+    const rig = new THREE.Group(); // หมุนตามฉาก
+    const body = new THREE.Group(); // ตัวการ์ตูน หมุนหาผู้ชมเองได้
+    body.scale.setScalar(TALL);
+    rig.add(body);
+    scene3.add(rig);
+
+    // แสงตามกล้อง ไม่หมุนตามฉาก ด้านที่หันหาผู้ชมจึงสว่างเสมอ ส่วนแสงขอบจากด้านหลังใช้สีเดียวกับเส้นด้าย
+    scene3.add(new THREE.HemisphereLight(0xffffff, 0x8ea3e6, 1.5));
+    const key = new THREE.DirectionalLight(0xffffff, 2.1);
+    key.position.set(-0.5, 0.9, 1);
+    scene3.add(key);
+    const rim = new THREE.DirectionalLight(0xffffff, 2.6);
+    rim.position.set(0.9, 0.5, -1);
+    scene3.add(rim);
+
+    const paint = (color, roughness = 0.62) => new THREE.MeshStandardMaterial({ color, roughness });
+    const skin = paint(0xffd9c4);
+    const hair = paint(0x2b2459, 0.5);
+    hair.side = THREE.DoubleSide;
+    const shirt = paint(0x3b82f6);
+    const scarf = paint(0x2dd4bf);
+    const pants = paint(0x1f2b5e);
+    const shoe = paint(0xf4f7ff, 0.5);
+    const ink = paint(0x141a33, 0.25);
+    const white = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    const pink = new THREE.MeshBasicMaterial({ color: 0xff7f9f, transparent: true, opacity: 0.5, depthWrite: false });
+
+    const add = (parent, geometry, material, x = 0, y = 0, z = 0) => {
+      const mesh = new THREE.Mesh(geometry, material);
+      mesh.position.set(x, y, z);
+      parent.add(mesh);
+      return mesh;
+    };
+    /** จุดบนผิวศีรษะ: หันซ้ายขวา yaw, ก้มเงย pitch (เรเดียน), ห่างจากกลางศีรษะ r */
+    const onHead = (yaw, pitch, r) => [
+      r * Math.sin(yaw) * Math.cos(pitch),
+      r * Math.sin(pitch),
+      r * Math.cos(yaw) * Math.cos(pitch),
+    ];
+
+    // ศีรษะ: ลูกกลมใหญ่ ผมเป็นฝาครอบเอียงไปข้างหลัง ให้หน้าม้าอยู่เหนือตาและผมด้านหลังยาวถึงต้นคอ
+    const head = new THREE.Group();
+    head.position.set(0, 0.74, 0);
+    body.add(head);
+    add(head, new THREE.SphereGeometry(0.2, 48, 32), skin);
+    add(head, new THREE.SphereGeometry(0.212, 48, 32, 0, Math.PI * 2, 0, 1.85), hair).rotation.x = -0.5;
+    const tuft = add(head, new THREE.SphereGeometry(0.03, 16, 12), hair, 0.015, 0.215, -0.03);
+    tuft.scale.set(0.8, 1.7, 0.8);
+    tuft.rotation.z = -0.5;
+
+    const eyes = [];
+    for (const side of [-1, 1]) {
+      const eye = new THREE.Group();
+      eye.position.set(...onHead(side * 0.38, -0.08, 0.19));
+      eye.rotation.y = side * 0.38;
+      head.add(eye);
+      add(eye, new THREE.SphereGeometry(0.034, 24, 16), ink).scale.set(0.82, 1.3, 0.4);
+      add(eye, new THREE.SphereGeometry(0.009, 12, 8), white, -0.008, 0.017, 0.012);
+      eyes.push(eye);
+
+      const cheek = add(head, new THREE.CircleGeometry(0.034, 24), pink, ...onHead(side * 0.8, -0.4, 0.2015));
+      cheek.rotation.set(0.4, side * 0.8, 0, 'YXZ');
+    }
+    const mouth = add(
+      head,
+      new THREE.TorusGeometry(0.024, 0.0055, 8, 24, Math.PI),
+      paint(0x8a3347, 0.5),
+      ...onHead(0, -0.44, 0.199),
+    );
+    mouth.rotation.set(0.44, 0, Math.PI);
+
+    // ลำตัว ผ้าพันคอ แขน ขา รองเท้า
+    add(body, new THREE.CapsuleGeometry(0.118, 0.1, 12, 32), shirt, 0, 0.36, 0).scale.set(1.1, 1, 0.92);
+    const wrap = add(body, new THREE.TorusGeometry(0.105, 0.038, 16, 40), scarf, 0, 0.525, 0.004);
+    wrap.rotation.x = Math.PI / 2;
+    wrap.scale.set(1, 0.92, 1);
+    add(body, new THREE.CapsuleGeometry(0.03, 0.09, 8, 16), scarf, 0.075, 0.44, 0.118).rotation.set(0.12, 0, 0.22);
+
+    const arm = (side) => {
+      const pivot = new THREE.Group();
+      pivot.position.set(side * 0.135, 0.47, 0);
+      pivot.rotation.z = side * 0.38;
+      body.add(pivot);
+      add(pivot, new THREE.CapsuleGeometry(0.04, 0.09, 8, 16), shirt, 0, -0.07, 0);
+      add(pivot, new THREE.SphereGeometry(0.046, 24, 16), skin, 0, -0.155, 0);
+      return pivot;
+    };
+    arm(-1);
+    const waving = arm(1);
+    for (const side of [-1, 1]) {
+      add(body, new THREE.CapsuleGeometry(0.052, 0.07, 8, 16), pants, side * 0.064, 0.115, 0);
+      add(body, new THREE.SphereGeometry(0.06, 24, 16), shoe, side * 0.066, 0.04, 0.028).scale.set(1, 0.64, 1.42);
+    }
+
+    const ease = (x) => {
+      const t = clamp(x, 0, 1);
+      return t * t * (3 - 2 * t);
+    };
+
+    return {
+      tint() {
+        rim.color.set(`rgb(${tone.rgb})`);
+      },
+      resize() {
+        renderer.setSize(Math.round(PLANE.w * figureScale), Math.round(PLANE.h * figureScale), false);
+      },
+      /** eye = ระยะจากกล้องถึงใจกลางฉาก, midY กับ midZ = ตำแหน่งกลางแผ่นใสหลังหมุนฉากแล้ว */
+      render(eye, midY, midZ, now) {
+        // กล้องต้องฉายภาพให้ตรงกับแผ่นใสพอดี ตัวการ์ตูนจึงอยู่ถูกที่และเอียงตามมุมมองเดียวกับการ์ด
+        const reach = eye - midZ;
+        const near = Math.max(1, reach - TALL * 1.5);
+        const k = near / reach;
+        camera.projectionMatrix.makePerspective(
+          (-PLANE.w / 2) * k,
+          (PLANE.w / 2) * k,
+          (PLANE.h / 2 - midY) * k,
+          (-PLANE.h / 2 - midY) * k,
+          near,
+          reach + TALL * 1.5,
+        );
+        camera.projectionMatrixInverse.copy(camera.projectionMatrix).invert();
+        camera.position.set(0, 0, eye);
+        rig.rotation.set(-view.pitch * RAD, view.yaw * RAD, 0);
+        body.rotation.y = mascotYaw;
+
+        // ท่าทาง: หายใจ เอียงคอ กะพริบตา และโบกมือทักเป็นช่วง ๆ
+        const t = now / 1000;
+        const alive = still.matches ? 0 : 1;
+        body.position.y = -FEET + TALL * 0.012 * Math.sin(t * 2.2) * alive;
+        head.rotation.z = 0.05 * Math.sin(t * 1.1) * alive;
+        for (const eye of eyes) eye.scale.y = alive && t % 3.8 < 0.13 ? 0.12 : 1;
+        const beat = t % 9;
+        const up = ease(beat / 0.7) * (1 - ease((beat - 2.8) / 0.7)) * alive;
+        waving.rotation.z = 0.38 + 2.1 * up + 0.24 * Math.sin(t * 9) * up;
+
+        renderer.render(scene3, camera);
+      },
+    };
+  }
+
+  if (stage.dataset.three) {
+    import(stage.dataset.three)
+      .then((THREE) => {
+        mascot = buildMascot(THREE);
+        mascot.tint();
+        mascot.resize();
+        figure.classList.add('on');
+        touch();
+      })
+      .catch((err) => {
+        // โหลดไลบรารีไม่ได้หรือเครื่องไม่มี WebGL ฉากยังใช้ได้ตามปกติ แค่ไม่มีตัวการ์ตูน
+        console.warn('[book] แสดงตัวการ์ตูนไม่ได้:', err);
+        mascot = null;
+        figure.remove();
+      });
   }
 
   function draw(depth, now) {
     const ox = world.offsetLeft;
     const oy = world.offsetTop;
     const turn = mul(rotX(view.pitch * RAD), rotY(view.yaw * RAD));
-    const back = { cx: ox, cy: oy, s: 1, px: 1, depth };
-    // กลางตัวคนหลังหมุนฉากแล้ว: สูงต่ำ (midY) ใกล้ไกล (midZ) และอัตราย่อ ณ จุดนั้น (k0)
+    // กลางตัวการ์ตูนหลังหมุนฉากแล้ว: สูงต่ำ (midY) ใกล้ไกล (midZ) และอัตราย่อ ณ จุดนั้น (k0)
     const midY = MID * turn[4];
     const midZ = MID * turn[7];
     const k0 = P / (P - midZ - depth);
@@ -786,21 +901,34 @@ function sceneClient() {
     ctx.globalAlpha = 1;
     ctx.lineCap = 'round';
 
-    // แสงเรืองหลังตัวคน เป็นวงรีตั้ง
-    const glowRadius = TALL * k0 * 0.56;
+    // แสงเรืองหลังตัวการ์ตูน
+    const glowRadius = TALL * k0 * 0.66;
     const glow = ctx.createRadialGradient(0, 0, 0, 0, 0, glowRadius);
     glow.addColorStop(0, `rgba(${tone.rgb}, ${tone.halo})`);
     glow.addColorStop(1, `rgba(${tone.rgb}, 0)`);
     ctx.save();
     ctx.translate(ox, oy + midY * k0);
-    ctx.scale(0.6, 1.1);
+    ctx.scale(0.85, 1);
     ctx.fillStyle = glow;
     ctx.fillRect(-glowRadius, -glowRadius, glowRadius * 2, glowRadius * 2);
     ctx.restore();
 
     ctx.strokeStyle = ctx.fillStyle = `rgb(${tone.rgb})`;
-    strokeLines(ctx, threads.map((thread) => thread.pts), turn, back, -R, R, { far: 0.05, near: 0.42, thin: 0.6, thick: 1 });
-    strokeLines(ctx, floor, turn, back, -R, R, { far: 0.1, near: 0.7, thin: 0.6, thick: 1.1 });
+    strokeLines(threads.map((thread) => thread.pts), turn, depth, { far: 0.05, near: 0.42, thin: 0.6, thick: 1 });
+    strokeLines(floor, turn, depth, { far: 0.1, near: 0.7, thin: 0.6, thick: 1.1 });
+
+    // แผ่นแสงใต้เท้า
+    const pad = floor[0];
+    ctx.globalAlpha = 0.12;
+    ctx.beginPath();
+    for (let i = 0; i < pad.length; i += 3) {
+      const k = P / (P - (turn[6] * pad[i] + turn[7] * pad[i + 1] + turn[8] * pad[i + 2]) - depth);
+      ctx.lineTo(
+        ox + (turn[0] * pad[i] + turn[1] * pad[i + 1] + turn[2] * pad[i + 2]) * k,
+        oy + (turn[3] * pad[i] + turn[4] * pad[i + 1] + turn[5] * pad[i + 2]) * k,
+      );
+    }
+    ctx.fill();
 
     // จุดแสงวิ่งไปตามด้ายที่ร้อยการ์ด เหมือนข้อมูลที่ไหลอยู่ในสาย
     if (!still.matches) {
@@ -826,22 +954,7 @@ function sceneClient() {
       });
     }
 
-    // ตัวคน
-    const plane = { cx: PLANE.w / 2, cy: PLANE.h / 2 - midY, s: 1 / k0, px: 1 / k0, depth };
-    // มองจากมุมสูงหรือมุมต่ำ ศีรษะกับเท้าจะอยู่ใกล้ไกลจากกล้องต่างกันมากขึ้น
-    const reach = TALL * (0.09 + 0.5 * Math.abs(Math.sin(view.pitch * RAD)));
-    pen.setTransform(figureScale, 0, 0, figureScale, 0, 0);
-    pen.clearRect(0, 0, PLANE.w, PLANE.h);
-    pen.globalCompositeOperation = tone.blend;
-    pen.lineCap = 'round';
-    pen.strokeStyle = `rgb(${tone.rgb})`;
-    strokeLines(pen, person, turn, plane, midZ - reach, midZ + reach, { far: 0.1, near: 0.8, thin: 0.5, thick: 1.15 });
-    if (!still.matches) {
-      // แถบแสงกวาดจากเท้าขึ้นศีรษะ เหมือนกำลังสแกนตัว
-      const at = (now / 5200) % 1.2;
-      const lit = slices.filter((slice) => Math.abs(slice.y - at) < SLICE * 0.8).map((slice) => slice.pts);
-      strokeLines(pen, lit, turn, plane, midZ - reach, midZ + reach, { far: 0.5, near: 1, thin: 1.2, thick: 2 });
-    }
+    if (mascot) mascot.render(P - depth, midY, midZ, now);
     figure.style.transform = `rotateY(${(-view.yaw).toFixed(2)}deg) rotateX(${(-view.pitch).toFixed(2)}deg)`;
   }
 
@@ -1060,10 +1173,11 @@ function sceneClient() {
   document.addEventListener('visibilitychange', kick);
   fit();
   route();
-  // เปิดมาให้การ์ดใบแรกเยื้องไปทางซ้ายและใบถัดไปอยู่ทางขวา จะได้เห็นคนที่ยืนอยู่กลางฉากเต็มตัว
+  // เปิดมาให้การ์ดใบแรกเยื้องไปทางซ้ายและใบถัดไปอยู่ทางขวา จะได้เห็นตัวการ์ตูนที่ยืนอยู่กลางฉากเต็มตัว
   const firstRow = cards.filter((card) => card.el.matches('.is-chapter') && card.tilt === cards[0].tilt).length;
   const home = firstRow ? -Math.min(180 / firstRow, 38) : 0;
   view.yaw = home;
+  mascotYaw = -home * RAD;
   if (!reading && !still.matches) {
     // ฉากหมุนเข้าหาผู้ชม
     view.yaw = home + 46;
