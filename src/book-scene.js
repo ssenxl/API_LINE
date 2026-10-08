@@ -475,9 +475,10 @@ ${sizes}
 }
 /* ชื่อเล่ม: ตัวใหญ่ หนา ไล่สี และเรืองแสง
    ตัวอักษรที่ไล่สีต้องโปร่งใส จึงใช้ text-shadow ไม่ได้ ให้เงาด้วย filter แทน
-   justify-self ทำให้กล่องกว้างเท่าข้อความ สีจะได้ไล่ครบตลอดชื่อ */
+   justify-self ทำให้กล่องกว้างเท่าข้อความ สีจะได้ไล่ครบตลอดชื่อ
+   ขนาดเต็มใช้ตั้งแต่จอกว้าง 1280px ขึ้นไป แคบกว่านั้นย่อลงเร็วกว่าความกว้างจอ บนมือถือชื่อเล่มจะได้จบในสองบรรทัด */
 .hud h1 {
-  justify-self: start; font-size: clamp(1.5rem, min(4vw, 6.2vh), 3.1rem); font-weight: 700; line-height: 1.16; text-wrap: balance;
+  justify-self: start; font-size: clamp(1.25rem, min(4.6vw - 9px, 6.2vh), 3.1rem); font-weight: 700; line-height: 1.16; text-wrap: balance;
   background: linear-gradient(100deg, var(--title-a) 15%, var(--title-b) 62%, var(--title-c));
   -webkit-background-clip: text; background-clip: text; color: transparent;
   filter: drop-shadow(0 0 20px rgba(var(--thread), .45)) drop-shadow(0 2px 3px var(--sky-b));
