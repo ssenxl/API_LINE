@@ -275,9 +275,11 @@ h1, h2, .wordmark { font-family: 'Trirong', 'Sarabun', serif; font-weight: 600; 
 
 /* ---------- พื้นหลังน้ำย้อม ---------- */
 .sky { background: radial-gradient(130% 100% at 50% 0%, var(--sky-a), var(--sky-b) 80%); }
-/* น้ำย้อมสี่สีซึมเข้าหากัน */
+/* น้ำย้อมสี่สีซึมเข้าหากัน สคริปต์เลื่อนชั้นนี้ตามมุมกล้องทุกเฟรม
+   will-change ให้เบราว์เซอร์วาดสีไล่ครั้งเดียวแล้วแค่เลื่อนภาพ ไม่งั้นจะวาดใหม่ทั้งผืนทุกเฟรม
+   (วัดแล้วเป็นตัวที่กินแรงการ์ดจอมากที่สุดในฉาก) */
 .dyes {
-  position: absolute; inset: -12%;
+  position: absolute; inset: -12%; will-change: transform;
   background:
     radial-gradient(52% 50% at 16% 14%, var(--dye-1), transparent 72%),
     radial-gradient(44% 46% at 90% 36%, var(--dye-2), transparent 72%),
@@ -385,14 +387,11 @@ ${sizes}
 .card.back .face { transform: scaleX(-1); }
 .card.far { filter: blur(2.4px); }
 .dense .card.far { visibility: hidden; }
-/* การ์ดที่หันมาด้านหน้าต้องอ่านออกแม้มีตัวการ์ตูนอยู่ข้างหลัง: จอสัมผัสใช้แก้วทึบขึ้นแต่ยังเห็นราง ๆ (เบา ไม่กินแรงเครื่อง)
-   ส่วนเครื่องที่ใช้เมาส์เบลอฉากหลังจริง ๆ */
+/* การ์ดที่หันมาด้านหน้าต้องอ่านออกแม้มีตัวการ์ตูนอยู่ข้างหลัง จึงใช้แก้วทึบขึ้นแต่ยังเห็นราง ๆ
+   ไม่ใช้ backdrop-filter เบลอฉากหลัง เพราะการ์ดหมุนอยู่ตลอด เบราว์เซอร์ต้องเบลอใหม่ทุกเฟรม
+   (วัดแล้วกินแรงการ์ดจอมากเป็นอันดับสอง รองจากพื้นหลังน้ำย้อม) */
 .card.near { background-color: var(--glass-near); }
 @media (hover: hover) and (pointer: fine) {
-  .card.near {
-    background-color: var(--glass);
-    -webkit-backdrop-filter: blur(14px) saturate(1.3); backdrop-filter: blur(14px) saturate(1.3);
-  }
   .card.near:hover { --lift: 26px; border-color: var(--shine); }
 }
 .face { display: flex; flex-direction: column; height: 100%; min-width: 0; }
