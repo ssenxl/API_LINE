@@ -17,16 +17,17 @@ const client = new OpenAI({
  *
  * @param {string} system คำสั่งหลัก ต้องมีคำว่า JSON อยู่ในนั้น (OpenAI บังคับ)
  * @param {Array<{role: 'user'|'assistant', content: string}>} messages
+ * @param {{reasoningEffort?: string}} [options] ระดับการคิดของงานนี้ ไม่ใส่ = ใช้ค่าหลัก
  * @returns {Promise<object>}
  */
-export async function askJSON(system, messages) {
+export async function askJSON(system, messages, { reasoningEffort = config.ai.reasoningEffort } = {}) {
   const completion = await client.chat.completions.create({
     model: config.ai.model,
     // ใช้ max_completion_tokens แทน max_tokens เพราะโมเดลตระกูล GPT-5 ไม่รับ max_tokens
     // ส่วนโมเดลรุ่นเก่าอย่าง gpt-4o-mini รับได้ทั้งสองแบบ
     max_completion_tokens: config.ai.maxOutputTokens,
     // ส่งเฉพาะเมื่อตั้งค่าไว้ เพราะโมเดลรุ่นเก่าที่ไม่ได้ "คิด" ก่อนตอบจะปฏิเสธพารามิเตอร์นี้
-    ...(config.ai.reasoningEffort && { reasoning_effort: config.ai.reasoningEffort }),
+    ...(reasoningEffort && { reasoning_effort: reasoningEffort }),
     response_format: { type: 'json_object' },
     messages: [{ role: 'system', content: system }, ...messages],
   });

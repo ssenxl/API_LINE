@@ -47,6 +47,39 @@ export function bookSettings(saved) {
 
 export async function renderBook() {
   const data = await kb.loadBook();
+  return page(data, await buildChapters(data));
+}
+
+/**
+ * เรียบเรียงบทที่กฎเพิ่งเปลี่ยนไว้ล่วงหน้า เรียกทันทีที่มีคนสอนหรือผู้ดูแลแก้อะไร
+ * คนที่เปิดหนังสือตามมาจะได้ไม่ต้องรอ AI เขียนบทใหม่ 10-30 วินาที
+ * ถ้าบทไหนไม่ได้เปลี่ยน ก็แค่อ่านฐานข้อมูลแล้วจบ ไม่เสียค่า AI
+ *
+ * ระหว่างที่ทำอยู่ถ้ามีเรื่องเปลี่ยนอีก จะทำซ้ำอีกรอบเดียวหลังรอบนี้เสร็จ
+ * สอนรัว ๆ หลายข้อจึงไม่ทำให้เขียนบทเดิมซ้อนกันหลายรอบ
+ */
+let warming = null;
+let warmAgain = false;
+
+export function warmBook() {
+  if (warming) {
+    warmAgain = true;
+    return;
+  }
+  warming = (async () => {
+    do {
+      warmAgain = false;
+      await buildChapters(await kb.loadBook());
+    } while (warmAgain);
+  })()
+    .catch((err) => console.error('[book] เตรียมบทล่วงหน้าไม่สำเร็จ:', err.message))
+    .finally(() => {
+      warming = null;
+    });
+}
+
+/** กรองของที่ผู้ดูแลซ่อน แล้วเตรียมเนื้อหาของทุกบท (ใส่ data.show ไว้ให้ page() ใช้ต่อด้วย) */
+async function buildChapters(data) {
   const settings = bookSettings(data.settings);
   data.show = settings.sections;
 
@@ -66,22 +99,31 @@ export async function renderBook() {
   const contents = await mapLimit(topics, CHAPTER_CONCURRENCY, (topic) =>
     chapterContent(topic, byTopic.get(topic), data.chapters.get(topic)),
   );
-  const chapters = topics.map((topic, i) => ({
+  return topics.map((topic, i) => ({
     topic,
     rules: byTopic.get(topic),
     content: contents[i],
   }));
-
-  return page(data, chapters);
 }
 
-async function chapterContent(topic, rules, cached) {
+/** บทที่ AI กำลังเขียนอยู่ คนที่เปิดหนังสือระหว่างนั้นรอผลชุดเดียวกัน ไม่สั่ง AI เขียนซ้ำ */
+const writing = new Map();
+
+function chapterContent(topic, rules, cached) {
   const hash = crypto
     .createHash('sha1')
     .update(JSON.stringify([CHAPTER_PROMPT_VERSION, rules.map((r) => [r.id, r.title, r.summary])]))
     .digest('hex');
   if (cached?.source_hash === hash) return cached.content;
 
+  const key = `${topic}\n${hash}`;
+  if (!writing.has(key)) {
+    writing.set(key, writeAndSave(topic, rules, hash).finally(() => writing.delete(key)));
+  }
+  return writing.get(key);
+}
+
+async function writeAndSave(topic, rules, hash) {
   try {
     const content = await writeChapter(topic, rules);
     await kb.saveChapter(topic, hash, content);

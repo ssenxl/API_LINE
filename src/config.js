@@ -36,6 +36,11 @@ export const config = {
     // ระดับการคิดของโมเดลตระกูล GPT-5: minimal | low | medium | high
     // ยิ่งสูงยิ่งละเอียดแต่ยิ่งช้า ไม่ตั้ง = ใช้ค่าเริ่มต้นของ OpenAI (medium)
     reasoningEffort: process.env.OPENAI_REASONING_EFFORT || '',
+    // ระดับการคิดตอนหาช่องโหว่หลังบันทึกกฎ ผู้สอนนั่งรอคำตอบอยู่ จึงใช้ระดับต่ำสุด
+    // ทดสอบกับกฎจริงแล้ว low ใช้ 9-20 วินาที minimal ใช้ 2-5 วินาที และคำถามที่ได้ดีพอกัน
+    // ถ้าไม่ได้ตั้ง OPENAI_REASONING_EFFORT (ใช้โมเดลที่ไม่ได้คิดก่อนตอบ) ก็ไม่ส่งค่านี้เหมือนกัน
+    gapsReasoningEffort:
+      process.env.OPENAI_GAPS_REASONING_EFFORT ?? (process.env.OPENAI_REASONING_EFFORT ? 'minimal' : ''),
     // โมเดลตระกูล GPT-5 นับ token ที่ใช้ "คิด" รวมในเพดานนี้ด้วย จึงต้องเผื่อไว้เยอะ
     maxOutputTokens: Number(process.env.OPENAI_MAX_OUTPUT_TOKENS) || 8000,
     // โมเดลถอดเสียงเป็นข้อความ รองรับภาษาไทย

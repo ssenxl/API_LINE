@@ -12,7 +12,7 @@ import {
   usersPage,
 } from './admin-views.js';
 import { sendAudio } from './audio.js';
-import { BOOK_SECTIONS, bookSettings } from './book.js';
+import { BOOK_SECTIONS, bookSettings, warmBook } from './book.js';
 import { config } from './config.js';
 import * as kb from './knowledge.js';
 
@@ -140,6 +140,12 @@ const short = (value, max = 80) => (value.length > max ? `${value.slice(0, max)}
 export const adminRouter = express.Router();
 adminRouter.use(requireKey);
 adminRouter.use(express.urlencoded({ extended: false }));
+
+// ทุกคำสั่งที่แก้ของในระบบเป็น POST พอทำเสร็จก็เรียบเรียงบทที่เปลี่ยนรอไว้เลย คนเปิดหนังสือจะได้ไม่ต้องรอ
+adminRouter.post('*', (_req, res, next) => {
+  res.on('finish', warmBook);
+  next();
+});
 
 // ---------- หน้าต่าง ๆ ----------
 

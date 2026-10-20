@@ -1,4 +1,5 @@
 import { transcribe } from './ai.js';
+import { warmBook } from './book.js';
 import { analyzeMessage, findGaps, resolveConflict } from './brain.js';
 import {
   bookCard,
@@ -346,6 +347,8 @@ async function handleMessage({ userId, messageId, text, history, isTeacher, pend
     updates,
     duplicateIds,
   });
+  // เริ่มเรียบเรียงบทใหม่ไปพร้อมกับหาช่องโหว่ ผู้สอนกดเปิดหนังสือตามมาจะได้เห็นทันที
+  warmBook();
 
   const notes = [];
   if (duplicateIds.length > 0) {
@@ -498,6 +501,7 @@ async function answerConflict({ conflict, userId, messageId, text, command, hist
     addRules: result.addRules,
     decision: result.decision || result.reply,
   });
+  warmBook();
 
   await collectQuestions(userId, added);
 

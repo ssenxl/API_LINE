@@ -3,7 +3,7 @@ import express from 'express';
 import { adminRouter } from './admin.js';
 import { sendAudio } from './audio.js';
 import { STATIC_DIR } from './book-scene.js';
-import { audioSignature, bookSettings, renderBook } from './book.js';
+import { audioSignature, bookSettings, renderBook, warmBook } from './book.js';
 import { config } from './config.js';
 import { migrate } from './db.js';
 import { handleEvent } from './handler.js';
@@ -126,4 +126,6 @@ app.listen(config.port, () => {
     console.log(`[server] ผู้มีสิทธิ์สอน ${config.teachers.size} คน`);
   }
   startKeepAlive();
+  // ถ้าเพิ่งแก้คำสั่งเขียนบท (CHAPTER_PROMPT_VERSION) ทุกบทต้องเขียนใหม่ ทำรอไว้เลยตั้งแต่เปิดเครื่อง
+  warmBook();
 });

@@ -1,4 +1,5 @@
 import { askJSON } from './ai.js';
+import { config } from './config.js';
 
 /**
  * คำสั่ง (prompt) ทั้งหมดที่ใช้คุยกับ AI อยู่ในไฟล์นี้
@@ -260,7 +261,9 @@ export async function findGaps({ topic, rules, newRules, asked }) {
     NEW: formatRules(newRules),
     ASKED: asked.length ? asked.map((q) => `- ${q.question}`).join('\n') : '(ยังไม่เคยถาม)',
   });
-  const raw = await askJSON(system, [{ role: 'user', content: `หาช่องโหว่ของบท "${topic}"` }]);
+  const raw = await askJSON(system, [{ role: 'user', content: `หาช่องโหว่ของบท "${topic}"` }], {
+    reasoningEffort: config.ai.gapsReasoningEffort,
+  });
 
   const known = new Set(rules.map((r) => r.id));
   return list(raw.questions)
