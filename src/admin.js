@@ -164,7 +164,7 @@ adminRouter.get(
     teachingPage({
       rows: await kb.loadTeachingDays([...config.teachers]),
       who: String(req.query.who ?? ''),
-      all: req.query.range === 'all',
+      range: String(req.query.range ?? ''),
       query: req.query,
     }),
   ),

@@ -503,11 +503,20 @@ export function historyPage({ timeline, limit, query }) {
 
 // ---------- การสอน ----------
 //
-// วันในปฏิทินเป็นสตริง YYYY-MM-DD ตามเวลาไทยที่ฐานข้อมูลคิดมาให้แล้ว
+// วันเป็นสตริง YYYY-MM-DD ตามเวลาไทยที่ฐานข้อมูลคิดมาให้แล้ว
 // ที่นี่คิดเลขวันด้วย UTC ล้วน ๆ เขตเวลาของเครื่องเซิร์ฟเวอร์จะได้ไม่ทำให้วันเลื่อน
 
-const WEEKDAYS = ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส'];
-// เปิดหน้ามาเห็นย้อนหลังแค่ปีเดียวพอ ที่เก่ากว่านั้นกดดูทั้งหมดได้
+// ช่วงเวลาที่เลือกดูได้ [ค่าใน URL, ป้ายปุ่ม, จำนวนวัน] ทั้งหมด = ตั้งแต่วันแรกที่มีคนสอน ค่าแรกคือค่าเริ่มต้น
+const RANGES = [
+  ['30', '30 วัน', 30],
+  ['90', '90 วัน', 90],
+  ['365', '1 ปี', 365],
+  ['all', 'ทั้งหมด', null],
+];
+// แท่งรายวันเกินนี้จะบางจนอ่านไม่ออก จึงรวมเป็นรายสัปดาห์แทน
+const DAILY_LIMIT = 120;
+// สีแยกผู้สอนมี 8 สี (--s1 ถึง --s8) เกินนั้นคนที่ 8 เป็นต้นไปรวมเป็น "คนอื่น ๆ" สีเทา
+const SERIES = 8;
 const MONTHS_SHOWN = 12;
 const DAY_MS = 86_400_000;
 
@@ -516,9 +525,11 @@ const utcOf = (key) => {
   const [y, m, d] = key.split('-').map(Number);
   return Date.UTC(y, m - 1, d);
 };
+const addDays = (key, n) => new Date(utcOf(key) + n * DAY_MS).toISOString().slice(0, 10);
 const dayName = (key, options) =>
   new Date(utcOf(key)).toLocaleDateString('th-TH', { timeZone: 'UTC', ...options });
 const longDay = (key) => dayName(key, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+const shortDay = (key) => dayName(key, { day: 'numeric', month: 'short' });
 const clock = (value) =>
   new Date(value).toLocaleTimeString('th-TH', { timeZone: 'Asia/Bangkok', hour: '2-digit', minute: '2-digit' });
 
@@ -552,56 +563,177 @@ function groupDays(rows) {
   return [...days.values()];
 }
 
-/** เดือนตั้งแต่เดือนนี้ย้อนไปถึงเดือนของ oldest (YYYY-MM) ใหม่สุดก่อน */
-function monthsBack(today, oldest, limit) {
-  let [y, m] = today.split('-').map(Number);
+/**
+ * สีประจำตัวผู้สอน ให้ตามลำดับคนที่เริ่มสอนก่อน สีของแต่ละคนจึงไม่เปลี่ยนเมื่อมีคนใหม่เข้ามาหรือกดกรองดูทีละคน
+ * คืน Map user_id → { slot, color, label }
+ */
+function seriesOf(rows) {
+  const order = [];
+  // แถวเรียงจากวันล่าสุด ไล่จากท้ายจึงเจอคนที่สอนก่อนก่อน
+  for (const row of [...rows].reverse()) {
+    if (!order.some((p) => p.id === row.user_id)) order.push({ id: row.user_id, name: row.name });
+  }
+  const crowded = order.length > SERIES;
+  return new Map(
+    order.map((p, i) => {
+      const other = crowded && i >= SERIES - 1;
+      return [
+        p.id,
+        other
+          ? { slot: SERIES - 1, color: 'var(--muted)', label: 'คนอื่น ๆ' }
+          : { slot: i, color: `var(--s${i + 1})`, label: p.name },
+      ];
+    }),
+  );
+}
+
+/** เลขบนแกนตั้งเป็นเลขกลม ๆ ราว 4 ช่อง */
+function scale(max) {
+  const raw = Math.max(1, max) / 4;
+  const mag = 10 ** Math.floor(Math.log10(raw));
+  const step = Math.max(1, [1, 2, 5, 10].map((m) => m * mag).find((s) => s >= raw));
+  const top = Math.max(step, Math.ceil(max / step) * step);
+  return { top, ticks: Array.from({ length: top / step + 1 }, (_, i) => i * step) };
+}
+
+const pct = (value, top) => `${((value / top) * 100).toFixed(2)}%`;
+
+/** แบ่งช่วงเวลาเป็นช่องละวัน หรือช่องละสัปดาห์ (จันทร์–อาทิตย์) แล้วใส่วันที่มีการสอนลงช่อง */
+function bucketsOf(days, start, today, weekly) {
+  let from = weekly ? addDays(start, -((new Date(utcOf(start)).getUTCDay() + 6) % 7)) : start;
+  const buckets = [];
+  while (from <= today) {
+    const to = weekly ? addDays(from, 6) : from;
+    buckets.push({ from, to: to < today ? to : today, days: [] });
+    from = addDays(to, 1);
+  }
+  const width = weekly ? 7 : 1;
+  for (const day of days) {
+    if (day.key < start) continue;
+    buckets[Math.floor((utcOf(day.key) - utcOf(buckets[0].from)) / DAY_MS / width)]?.days.push(day);
+  }
+  return buckets;
+}
+
+/** รวมสิ่งที่แต่ละคนทำในช่องนั้น และแบ่งความสูงของแท่งตามสีผู้สอน */
+function summarize(days, series) {
+  const people = new Map();
+  for (const day of days) {
+    for (const p of day.people) {
+      const sum = people.get(p.user_id) ?? { ...p, days: 0, messages: 0, voices: 0, rules: 0, answered: 0 };
+      sum.days += 1;
+      for (const k of ['messages', 'voices', 'rules', 'answered']) sum[k] += p[k];
+      people.set(p.user_id, sum);
+    }
+  }
+  const slots = new Map();
+  for (const p of people.values()) {
+    const { slot, color } = series.get(p.user_id);
+    const seg = slots.get(slot) ?? { slot, color, value: 0 };
+    seg.value += p.messages;
+    slots.set(slot, seg);
+  }
+  return {
+    people: [...people.values()],
+    segments: [...slots.values()].sort((a, b) => a.slot - b.slot),
+    total: [...people.values()].reduce((sum, p) => sum + p.messages, 0),
+  };
+}
+
+/**
+ * ป้ายใต้แกนนอน ตัวขวาสุดชิดขวา ตัวซ้ายสุดชิดซ้าย จะได้ไม่ล้นออกนอกกราฟ
+ * k = ลำดับของป้ายนับจากขวา ป้ายลำดับคี่ถูกซ่อนบนจอแคบ (alt) ไม่ให้ตัวหนังสือชนกัน
+ */
+function xLabel(text, i, n, k) {
+  const edge = i === n - 1 ? ' end' : i / n < 0.08 ? ' start' : '';
+  return `<span class="x${edge}${k % 2 ? ' alt' : ''}">${escape(text)}</span>`;
+}
+
+/** กราฟแท่งจำนวนข้อความที่ผู้สอนส่งมา รายวันหรือรายสัปดาห์ แต่ละแท่งซ้อนสีตามผู้สอน */
+function activityChart(buckets, series, weekly) {
+  const data = buckets.map((b) => ({ ...b, ...summarize(b.days, series) }));
+  const { top, ticks } = scale(Math.max(0, ...data.map((d) => d.total)));
+  const n = data.length;
+  const every = Math.ceil(n / 6);
+
+  const cols = data.map((d, i) => {
+    const fromRight = n - 1 - i;
+    const label = fromRight % every === 0 ? xLabel(shortDay(d.from), i, n, fromRight / every) : '';
+    if (d.days.length === 0) return `<span class="col">${label}</span>`;
+
+    const when = weekly ? `สัปดาห์ ${shortDay(d.from)} – ${longDay(d.to)}` : longDay(d.from);
+    const lines = d.people.map((p) => `${p.name} · ${weekly ? `สอน ${p.days} วัน · ` : ''}${didWhat(p)}`);
+    const bars = d.segments
+      .map((s) => `<i style="flex-grow:${s.value || 1};background:${s.color}"></i>`)
+      .join('');
+    return `<a class="col" href="#day-${d.days[0].key}" data-tip="${escape([when, ...lines].join('\n'))}"
+        aria-label="${escape(`${when}: ${lines.join(', ')}`)}">
+      <span class="stack" style="height:${pct(d.total, top)}">${bars}</span>${label}</a>`;
+  });
+
+  return `<div class="chart" style="--n:${n}">
+    <div class="y" aria-hidden="true">${ticks.map((t) => `<span style="bottom:${pct(t, top)}">${t}</span>`).join('')}</div>
+    <div class="scroll">
+      <div class="plot" role="group" aria-label="จำนวนข้อความที่ส่งมาสอน${weekly ? 'ในแต่ละสัปดาห์' : 'ในแต่ละวัน'}">
+        ${ticks.map((t) => `<i class="grid" style="bottom:${pct(t, top)}"></i>`).join('')}
+        ${cols.join('')}
+      </div>
+    </div>
+  </div>`;
+}
+
+/** เดือนตั้งแต่ from ถึง to (YYYY-MM) เก่าสุดก่อน */
+function monthsBetween(from, to) {
   const months = [];
-  while (months.length < limit) {
-    const key = `${y}-${String(m).padStart(2, '0')}`;
+  let [y, m] = from.split('-').map(Number);
+  for (let key = from; key <= to; key = `${y}-${String(m).padStart(2, '0')}`) {
     months.push(key);
-    if (key <= oldest) break;
-    m -= 1;
-    if (m === 0) [y, m] = [y - 1, 12];
+    m += 1;
+    if (m === 13) [y, m] = [y + 1, 1];
   }
   return months;
 }
 
-/** ความเข้มของสี 1-4 ตามจำนวนข้อความ เทียบกับวันที่ส่งมามากที่สุด */
-const levelOf = (messages, max) => Math.min(4, Math.max(1, Math.ceil((messages / max) * 4)));
-
-function monthCalendar(month, byDay, today, max) {
-  const [y, m] = month.split('-').map(Number);
-  const lead = new Date(Date.UTC(y, m - 1, 1)).getUTCDay();
-  const length = new Date(Date.UTC(y, m, 0)).getUTCDate();
-  let active = 0;
-
-  const cells = [];
-  for (let d = 1; d <= length; d += 1) {
-    const key = `${month}-${String(d).padStart(2, '0')}`;
-    const day = byDay.get(key);
-    const isToday = key === today;
-    const now = isToday ? ' aria-current="date"' : '';
-    if (!day) {
-      const cls = `d${isToday ? ' today' : ''}${key > today ? ' future' : ''}`;
-      cells.push(`<span class="${cls}"${now}>${d}</span>`);
-      continue;
+/** กราฟแท่งจำนวนวันที่เข้ามาสอนในแต่ละเดือน มีเลขบนหัวแท่งทุกแท่งจึงไม่ต้องมีแกนตั้ง */
+function monthlyChart(months, days, color) {
+  const data = months.map((month) => {
+    const inMonth = days.filter((d) => d.key.startsWith(month));
+    const people = new Map();
+    for (const day of inMonth) {
+      for (const p of day.people) people.set(p.name, (people.get(p.name) ?? 0) + 1);
     }
-    active += 1;
-    const lines = day.people.map((p) => `${p.name} · ${didWhat(p)}`);
-    const tip = [longDay(key), ...lines].join('\n');
-    cells.push(
-      `<a class="d l${levelOf(day.messages, max)}${isToday ? ' today' : ''}" href="#day-${key}"${now}
-        data-tip="${escape(tip)}" aria-label="${escape(`${longDay(key)}: ${lines.join(', ')}`)}">${d}</a>`,
-    );
-  }
+    return { month, count: inMonth.length, people };
+  });
+  const top = Math.max(1, ...data.map((d) => d.count));
 
-  const blanks = '<span class="blank"></span>'.repeat(lead);
-  const header = WEEKDAYS.map((w) => `<span class="wd">${w}</span>`).join('');
-  return `<section class="month">
-    <h3>${dayName(`${month}-01`, { month: 'long', year: 'numeric' })}
-      <span class="meta">${active ? `สอน ${active} วัน` : 'ไม่มีการสอน'}</span></h3>
-    <div class="cal">${header}${blanks}${cells.join('')}</div>
-  </section>`;
+  const cols = data.map((d, i) => {
+    const name = dayName(`${d.month}-01`, { month: 'long', year: 'numeric' });
+    const who = [...d.people].map(([person, n]) => `${person} ${n} วัน`).join(' · ');
+    const tip = [name, d.count ? `เข้ามาสอน ${d.count} วัน` : 'ไม่มีการสอน', who].filter(Boolean).join('\n');
+    return `<span class="col" tabindex="0" data-tip="${escape(tip)}" aria-label="${escape(tip.replace(/\n/g, ', '))}">
+      <span class="cap">${d.count}</span>
+      ${d.count ? `<span class="stack" style="height:${pct(d.count, top)};background:${color}"></span>` : ''}
+      ${xLabel(dayName(`${d.month}-01`, { month: 'short', year: '2-digit' }), i, data.length, data.length > 6 ? data.length - 1 - i : 0)}
+    </span>`;
+  });
+
+  return `<div class="chart monthly">
+    <div class="scroll"><div class="plot" role="group" aria-label="จำนวนวันที่เข้ามาสอนในแต่ละเดือน">${cols.join('')}</div></div>
+  </div>`;
+}
+
+/** ป้ายบอกสีของผู้สอน ใช้เมื่อกราฟมีมากกว่าหนึ่งคน */
+function seriesKeys(rows, series) {
+  const slots = new Map();
+  for (const row of rows) {
+    const s = series.get(row.user_id);
+    slots.set(s.slot, s);
+  }
+  if (slots.size < 2) return '';
+  return `<ul class="keys">${[...slots.values()]
+    .sort((a, b) => a.slot - b.slot)
+    .map((s) => `<li><i style="background:${s.color}"></i>${escape(s.label)}</li>`)
+    .join('')}</ul>`;
 }
 
 function dayEntry(day, today) {
@@ -628,8 +760,9 @@ function dayEntry(day, today) {
   </article>`;
 }
 
-export function teachingPage({ rows, who, all, query }) {
+export function teachingPage({ rows, who, range, query }) {
   const today = todayKey();
+  const series = seriesOf(rows);
 
   // รายชื่อผู้สอนสำหรับปุ่มกรอง เรียงจากคนที่เข้ามาสอนหลายวันที่สุด
   const teachers = new Map();
@@ -639,37 +772,52 @@ export function teachingPage({ rows, who, all, query }) {
     teachers.set(row.user_id, t);
   }
   const person = teachers.get(who) ?? null;
-  const days = groupDays(person ? rows.filter((r) => r.user_id === person.id) : rows);
+  const mine = person ? rows.filter((r) => r.user_id === person.id) : rows;
+  const days = groupDays(mine);
 
-  const oldest = days.at(-1)?.key.slice(0, 7) ?? today.slice(0, 7);
-  const everyMonth = monthsBack(today, oldest, Infinity);
-  const months = all ? everyMonth : everyMonth.slice(0, MONTHS_SHOWN);
-  const shown = days.filter((d) => d.key.slice(0, 7) >= months.at(-1));
+  const [rangeKey, , span] = RANGES.find(([key]) => key === range) ?? RANGES[0];
+  const first = days.at(-1)?.key ?? today;
+  const start = span ? addDays(today, -(span - 1)) : first;
+  const length = Math.round((utcOf(today) - utcOf(start)) / DAY_MS) + 1;
+  const weekly = length > DAILY_LIMIT;
+  const shown = days.filter((d) => d.key >= start);
 
-  const byDay = new Map(days.map((d) => [d.key, d]));
-  const max = Math.max(1, ...days.map((d) => d.messages));
   const thisMonth = days.filter((d) => d.key.startsWith(today.slice(0, 7))).length;
   const rules = days.reduce((sum, d) => sum + d.rules, 0);
   const latest = days[0];
 
+  // กราฟรายเดือนย้อนหลังหนึ่งปี หรือทั้งหมดถ้าเลือกดูทั้งหมด แต่ไม่ย้อนไปก่อนเดือนแรกที่มีการสอน
+  const yearAgo = addDays(`${today.slice(0, 7)}-01`, -330).slice(0, 7);
+  const firstMonth = first.slice(0, 7);
+  const months = monthsBetween(
+    rangeKey === 'all' || firstMonth > yearAgo ? firstMonth : yearAgo,
+    today.slice(0, 7),
+  ).slice(-(rangeKey === 'all' ? Infinity : MONTHS_SHOWN));
+
+  // ค่าเริ่มต้นไม่ต้องใส่ใน URL
   const link = (params) => {
-    const search = new URLSearchParams(Object.entries(params).filter(([, v]) => v)).toString();
+    const search = new URLSearchParams(
+      Object.entries(params).filter(([k, v]) => v && !(k === 'range' && v === RANGES[0][0])),
+    ).toString();
     return escape(`/admin/teaching${search ? `?${search}` : ''}`);
   };
-  const range = all ? 'all' : '';
-  const filters =
+  const people =
     teachers.size > 1
       ? `<nav class="filters" aria-label="เลือกผู้สอน">
-          <a href="${link({ range })}"${person ? '' : ' aria-current="page"'}>ทุกคน</a>
+          <a href="${link({ range: rangeKey })}"${person ? '' : ' aria-current="page"'}>ทุกคน</a>
           ${[...teachers.values()]
             .sort((a, b) => b.days - a.days || a.name.localeCompare(b.name, 'th'))
             .map(
-              (t) => `<a href="${link({ who: t.id, range })}"${t === person ? ' aria-current="page"' : ''}>
+              (t) => `<a href="${link({ who: t.id, range: rangeKey })}"${t === person ? ' aria-current="page"' : ''}>
                 ${escape(t.name)} <span class="meta">${t.days} วัน</span></a>`,
             )
             .join('')}
         </nav>`
       : '';
+  const ranges = `<nav class="filters" aria-label="ช่วงเวลา">${RANGES.map(
+    ([key, label]) =>
+      `<a href="${link({ who: person?.id, range: key })}"${key === rangeKey ? ' aria-current="page"' : ''}>${label}</a>`,
+  ).join('')}</nav>`;
 
   const stats = [
     [days.length.toLocaleString('th-TH'), 'วันที่เข้ามาสอนทั้งหมด'],
@@ -683,23 +831,35 @@ export function teachingPage({ rows, who, all, query }) {
     )
     .join('');
 
-  const legend = `<p class="legend" aria-hidden="true">น้อย
-    <i class="l1"></i><i class="l2"></i><i class="l3"></i><i class="l4"></i> มาก</p>`;
+  const forWhom = person ? ` · ${escape(person.name)}` : '';
+  const period = `${shortDay(start)} – ${longDay(today)}`;
+  const color = person ? series.get(person.id).color : 'var(--accent)';
 
   const body = `
-  <p class="meta">วันที่ผู้สอนเข้ามาคุยกับบอทใน LINE (นับตามเวลาไทย) สีเข้มตามจำนวนข้อความที่ส่งมาในวันนั้น
-    ${days.length ? `มากสุด ${max} ข้อความต่อวัน ` : ''}กดวันในปฏิทินเพื่อดูรายละเอียดด้านล่าง</p>
-  ${filters}
+  <p class="meta">วันที่ผู้สอนเข้ามาคุยกับบอทใน LINE (นับตามเวลาไทย) ชี้ที่แท่งเพื่อดูว่าใครสอนอะไร
+    กดแท่งในกราฟแรกเพื่อเลื่อนไปดูวันนั้นด้านล่าง</p>
+  <div class="controls">${people}${ranges}</div>
   <section class="tiles stats">${stats}</section>
 
   <section class="panel">
-    <div class="cal-head"><h2>ปฏิทินการสอน${person ? ` · ${escape(person.name)}` : ''}</h2>${legend}</div>
-    <div class="months">${months.map((m) => monthCalendar(m, byDay, today, max)).join('')}</div>
-    ${
-      everyMonth.length > months.length
-        ? `<p><a href="${link({ who: person?.id, range: 'all' })}">ดูย้อนหลังทั้งหมด (${everyMonth.length} เดือน) →</a></p>`
-        : ''
-    }
+    <div class="chart-head">
+      <div>
+        <h2>ข้อความที่ส่งมาสอน${weekly ? 'รายสัปดาห์' : 'รายวัน'}${forWhom}</h2>
+        <p class="meta">${period} · เข้ามาสอน ${shown.length} วัน จาก ${length} วัน</p>
+      </div>
+      ${seriesKeys(mine.filter((r) => r.day >= start), series)}
+    </div>
+    ${activityChart(bucketsOf(days, start, today, weekly), series, weekly)}
+  </section>
+
+  <section class="panel">
+    <div class="chart-head">
+      <div>
+        <h2>จำนวนวันที่เข้ามาสอนในแต่ละเดือน${forWhom}</h2>
+        <p class="meta">นับวันละครั้ง ไม่ว่าวันนั้นจะส่งมากี่ข้อความ</p>
+      </div>
+    </div>
+    ${monthlyChart(months, days, color)}
   </section>
 
   <section class="topic">
@@ -833,7 +993,10 @@ const SCRIPT = `
   reveal();
   addEventListener('hashchange', reveal);
 
-  // ป้ายบอกรายละเอียดตอนชี้หรือเลื่อนโฟกัสไปที่วันในปฏิทิน ใช้ป้ายเดียวย้ายไปมา
+  // กราฟที่ยาวเกินจอให้เปิดมาเห็นวันล่าสุด (ขวาสุด) ก่อน
+  document.querySelectorAll('.chart .scroll').forEach((el) => (el.scrollLeft = el.scrollWidth));
+
+  // ป้ายบอกรายละเอียดตอนชี้หรือเลื่อนโฟกัสไปที่แท่งในกราฟ ใช้ป้ายเดียวย้ายไปมา
   const tip = document.querySelector('.tip');
   if (tip) {
     const show = (el) => {
@@ -858,8 +1021,21 @@ const SCRIPT = `
   }
 `;
 
+const seriesVars = (colors) => colors.map((c, i) => `--s${i + 1}: ${c};`).join(' ');
+const SERIES_LIGHT = seriesVars(['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#6250d6', '#e34948']);
+const SERIES_DARK = seriesVars(['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181', '#008300', '#9085e9', '#e66767']);
+
 const ADMIN_STYLE = `
 :root { --danger: #a3302a; --danger-soft: #f8e1de; }
+/* สีแยกผู้สอนในกราฟ ลำดับสีนี้ผ่านการตรวจว่าคนตาบอดสีก็แยกสีที่อยู่ติดกันออก */
+:root { ${SERIES_LIGHT} }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { ${SERIES_DARK} }
+}
+:root[data-theme="dark"] { ${SERIES_DARK} }
+@media print {
+  :root, :root[data-theme="dark"] { ${SERIES_LIGHT} }
+}
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) { --danger: #f08a80; --danger-soft: #3d1f1c; }
 }
@@ -961,31 +1137,42 @@ button.link { font: inherit; font-size: .82rem; background: none; border: 0; pad
 @media (max-width: 480px) { .stats .tile strong { font-size: 1.3rem; } }
 .stats .tile:hover { border-color: var(--glass-line); }
 .filters .meta { font-size: .8rem; }
-.cal-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 16px; margin-bottom: 14px; }
-.cal-head h2 { margin: 0; }
-.legend { display: flex; align-items: center; gap: 4px; margin: 0; font-size: .85rem; color: var(--muted); }
-.legend i { width: 14px; height: 14px; border-radius: 4px; }
-.months { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 24px 32px; margin-bottom: 8px; }
-.month h3 { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin: 0 0 8px; font-size: 1.02rem; }
-.month h3 .meta { font-size: .82rem; font-weight: 400; }
-.cal { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
-.cal .wd { text-align: center; font-size: .75rem; color: var(--muted); }
-.cal .d {
-  aspect-ratio: 1; display: grid; place-items: center; border-radius: 8px;
-  font-size: .85rem; color: var(--muted); text-decoration: none; font-variant-numeric: tabular-nums;
+.controls { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 0 16px; }
+.controls .filters { margin: 0 0 12px; }
+.chart-head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 6px 16px; margin-bottom: 16px; }
+.chart-head h2 { margin: 0; }
+.chart-head .meta { margin: 2px 0 0; }
+.keys { display: flex; flex-wrap: wrap; gap: 4px 14px; list-style: none; padding: 0; margin: 4px 0 0; font-size: .85rem; }
+.keys li { display: flex; align-items: center; gap: 6px; }
+.keys i { width: 10px; height: 10px; border-radius: 3px; }
+/* แกนตั้งอยู่นอกช่องเลื่อน จอแคบเลื่อนดูวันเก่า ๆ ได้โดยเลขบนแกนยังอยู่ที่เดิม */
+.chart { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px; align-items: start; }
+.chart .y { position: relative; height: 200px; min-width: 1.6em; font-size: .75rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.chart .y span { position: absolute; right: 0; transform: translateY(50%); line-height: 1; }
+.chart .scroll { overflow-x: auto; overflow-y: hidden; padding: 0 2px 30px; scrollbar-width: thin; }
+.plot { position: relative; display: flex; height: 200px; min-width: calc(var(--n) * 6px); }
+.plot .grid { position: absolute; left: 0; right: 0; height: 1px; background: var(--line); }
+.col {
+  position: relative; flex: 1 1 0; display: flex; flex-direction: column; justify-content: flex-end; align-items: center;
+  color: inherit; text-decoration: none; border-radius: 6px 6px 0 0;
 }
-.cal .future { opacity: .45; }
-.cal a.d { font-weight: 700; transition: transform .12s, filter .12s; }
-.cal a.d:hover, .cal a.d:focus-visible { transform: translateY(-1px); filter: brightness(1.18); outline: none; }
-.cal .today { outline: 2px solid var(--ink); outline-offset: 2px; color: var(--ink); }
-/* สีเดียวไล่จากจางไปเข้มตามจำนวนข้อความ ผสมจากสีหลักของธีมกับพื้นแผ่น ใช้ได้ทั้งจอมืดและตอนพิมพ์ */
-.l1 { background: color-mix(in oklab, var(--accent) 44%, var(--paper)); }
-.l2 { background: color-mix(in oklab, var(--accent) 66%, var(--paper)); }
-.l3 { background: color-mix(in oklab, var(--accent) 84%, var(--paper)); }
-.l4 { background: var(--accent); }
-.cal .d.l1 { color: var(--ink); }
-.cal .d.l2, .cal .d.l3, .cal .d.l4 { color: var(--paper); }
-@media print { .cal .d.l2 { color: var(--ink); } }
+a.col:hover, a.col:focus-visible, .monthly .col:hover, .monthly .col:focus-visible {
+  background: color-mix(in oklab, var(--ink) 8%, transparent); outline: none;
+}
+/* แท่งกว้างไม่เกิน 24px หัวมน 4px โคนเหลี่ยม ช่องว่าง 2px คั่นระหว่างแท่งและระหว่างสีที่ซ้อนกัน */
+.stack {
+  display: flex; flex-direction: column-reverse; gap: 2px; flex-shrink: 0;
+  width: min(24px, calc(100% - 2px)); min-height: 3px; border-radius: 4px 4px 0 0; overflow: hidden;
+}
+.stack i { flex: 1 1 0; min-height: 0; }
+.col .x { position: absolute; top: calc(100% + 8px); left: 50%; transform: translateX(-50%); white-space: nowrap; font-size: .75rem; color: var(--muted); }
+.col .x.start { left: 0; transform: none; }
+.col .x.end { left: auto; right: 0; transform: none; }
+.monthly { grid-template-columns: minmax(0, 1fr); }
+.monthly .plot { height: 170px; min-width: 0; border-bottom: 1px solid var(--line); }
+.monthly .col { flex: 0 1 72px; padding-top: 30px; }
+.monthly .cap { margin-bottom: 4px; font-size: .85rem; line-height: 1.2; font-weight: 600; font-variant-numeric: tabular-nums; }
+@media (max-width: 560px) { .col .x.alt { display: none; } }
 .day-entry { scroll-margin-top: 70px; }
 .day-entry:target { border-color: var(--accent); }
 .people { list-style: none; padding: 0; margin: 0; }
