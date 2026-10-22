@@ -8,6 +8,7 @@ import {
   overviewPage,
   questionsPage,
   rulesPage,
+  teachingPage,
   trashPage,
   usersPage,
 } from './admin-views.js';
@@ -155,6 +156,18 @@ adminRouter.get(
     const [overview, timeline] = await Promise.all([kb.loadOverview(), kb.loadTimeline(10)]);
     return overviewPage({ overview, timeline, query: req.query });
   }),
+);
+
+adminRouter.get(
+  '/teaching',
+  view('การสอน', async (req) =>
+    teachingPage({
+      rows: await kb.loadTeachingDays([...config.teachers]),
+      who: String(req.query.who ?? ''),
+      all: req.query.range === 'all',
+      query: req.query,
+    }),
+  ),
 );
 
 adminRouter.get(

@@ -11,6 +11,7 @@ const STORAGE_LIMIT = 512 * 1024 * 1024;
 
 const TABS = [
   ['/admin', 'ภาพรวม'],
+  ['/admin/teaching', 'การสอน'],
   ['/admin/rules', 'กฎ'],
   ['/admin/questions', 'คำถาม'],
   ['/admin/conflicts', 'ข้อขัดแย้ง'],
@@ -500,6 +501,216 @@ export function historyPage({ timeline, limit, query }) {
   return shell({ tab: '/admin/history', title: 'ประวัติ', query, body, search: true });
 }
 
+// ---------- การสอน ----------
+//
+// วันในปฏิทินเป็นสตริง YYYY-MM-DD ตามเวลาไทยที่ฐานข้อมูลคิดมาให้แล้ว
+// ที่นี่คิดเลขวันด้วย UTC ล้วน ๆ เขตเวลาของเครื่องเซิร์ฟเวอร์จะได้ไม่ทำให้วันเลื่อน
+
+const WEEKDAYS = ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส'];
+// เปิดหน้ามาเห็นย้อนหลังแค่ปีเดียวพอ ที่เก่ากว่านั้นกดดูทั้งหมดได้
+const MONTHS_SHOWN = 12;
+const DAY_MS = 86_400_000;
+
+const todayKey = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' });
+const utcOf = (key) => {
+  const [y, m, d] = key.split('-').map(Number);
+  return Date.UTC(y, m - 1, d);
+};
+const dayName = (key, options) =>
+  new Date(utcOf(key)).toLocaleDateString('th-TH', { timeZone: 'UTC', ...options });
+const longDay = (key) => dayName(key, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+const clock = (value) =>
+  new Date(value).toLocaleTimeString('th-TH', { timeZone: 'Asia/Bangkok', hour: '2-digit', minute: '2-digit' });
+
+function ago(key, today) {
+  const n = Math.round((utcOf(today) - utcOf(key)) / DAY_MS);
+  return n === 0 ? 'วันนี้' : n === 1 ? 'เมื่อวาน' : `${n} วันที่แล้ว`;
+}
+
+/** สิ่งที่ผู้สอนทำในวันนั้น เช่น "12 ข้อความ (เสียง 3) · บันทึกกฎ 4 ข้อ" */
+function didWhat({ messages, voices, rules, answered }) {
+  return [
+    messages ? `${messages} ข้อความ${voices ? ` (เสียง ${voices})` : ''}` : '',
+    rules ? `บันทึกกฎ ${rules} ข้อ` : '',
+    answered ? `ตอบคำถาม ${answered} ข้อ` : '',
+  ]
+    .filter(Boolean)
+    .join(' · ');
+}
+
+/** รวมแถวของแต่ละคนให้เป็นรายวัน แถวมาเรียงจากวันล่าสุดแล้ว */
+function groupDays(rows) {
+  const days = new Map();
+  for (const row of rows) {
+    if (!days.has(row.day)) {
+      days.set(row.day, { key: row.day, messages: 0, voices: 0, rules: 0, answered: 0, people: [] });
+    }
+    const day = days.get(row.day);
+    for (const k of ['messages', 'voices', 'rules', 'answered']) day[k] += row[k];
+    day.people.push(row);
+  }
+  return [...days.values()];
+}
+
+/** เดือนตั้งแต่เดือนนี้ย้อนไปถึงเดือนของ oldest (YYYY-MM) ใหม่สุดก่อน */
+function monthsBack(today, oldest, limit) {
+  let [y, m] = today.split('-').map(Number);
+  const months = [];
+  while (months.length < limit) {
+    const key = `${y}-${String(m).padStart(2, '0')}`;
+    months.push(key);
+    if (key <= oldest) break;
+    m -= 1;
+    if (m === 0) [y, m] = [y - 1, 12];
+  }
+  return months;
+}
+
+/** ความเข้มของสี 1-4 ตามจำนวนข้อความ เทียบกับวันที่ส่งมามากที่สุด */
+const levelOf = (messages, max) => Math.min(4, Math.max(1, Math.ceil((messages / max) * 4)));
+
+function monthCalendar(month, byDay, today, max) {
+  const [y, m] = month.split('-').map(Number);
+  const lead = new Date(Date.UTC(y, m - 1, 1)).getUTCDay();
+  const length = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  let active = 0;
+
+  const cells = [];
+  for (let d = 1; d <= length; d += 1) {
+    const key = `${month}-${String(d).padStart(2, '0')}`;
+    const day = byDay.get(key);
+    const isToday = key === today;
+    const now = isToday ? ' aria-current="date"' : '';
+    if (!day) {
+      const cls = `d${isToday ? ' today' : ''}${key > today ? ' future' : ''}`;
+      cells.push(`<span class="${cls}"${now}>${d}</span>`);
+      continue;
+    }
+    active += 1;
+    const lines = day.people.map((p) => `${p.name} · ${didWhat(p)}`);
+    const tip = [longDay(key), ...lines].join('\n');
+    cells.push(
+      `<a class="d l${levelOf(day.messages, max)}${isToday ? ' today' : ''}" href="#day-${key}"${now}
+        data-tip="${escape(tip)}" aria-label="${escape(`${longDay(key)}: ${lines.join(', ')}`)}">${d}</a>`,
+    );
+  }
+
+  const blanks = '<span class="blank"></span>'.repeat(lead);
+  const header = WEEKDAYS.map((w) => `<span class="wd">${w}</span>`).join('');
+  return `<section class="month">
+    <h3>${dayName(`${month}-01`, { month: 'long', year: 'numeric' })}
+      <span class="meta">${active ? `สอน ${active} วัน` : 'ไม่มีการสอน'}</span></h3>
+    <div class="cal">${header}${blanks}${cells.join('')}</div>
+  </section>`;
+}
+
+function dayEntry(day, today) {
+  const people = day.people.map((p) => {
+    // เปิดแชทของคนนี้ให้จบที่ข้อความสุดท้ายของวันนั้น แล้วเลื่อนไปที่ข้อความแรกของวัน
+    const chat = p.first_id
+      ? `/admin/chats/${encodeURIComponent(p.user_id)}?before=${p.last_id + 1}#m-${p.first_id}`
+      : '';
+    const time = p.first_at
+      ? clock(p.first_at) === clock(p.last_at)
+        ? clock(p.first_at)
+        : `${clock(p.first_at)}–${clock(p.last_at)}`
+      : '';
+    return `<li>
+      <strong>${escape(p.name)}</strong>
+      <span>${escape(didWhat(p))}</span>
+      <span class="meta">${time ? `${time} น.` : ''}${chat ? `${time ? ' · ' : ''}<a href="${chat}">ดูแชทวันนี้ →</a>` : ''}</span>
+    </li>`;
+  });
+
+  return `<article class="item day-entry" id="day-${day.key}">
+    <header><strong>${longDay(day.key)}</strong><span class="meta">${ago(day.key, today)}</span></header>
+    <ul class="people">${people.join('')}</ul>
+  </article>`;
+}
+
+export function teachingPage({ rows, who, all, query }) {
+  const today = todayKey();
+
+  // รายชื่อผู้สอนสำหรับปุ่มกรอง เรียงจากคนที่เข้ามาสอนหลายวันที่สุด
+  const teachers = new Map();
+  for (const row of rows) {
+    const t = teachers.get(row.user_id) ?? { id: row.user_id, name: row.name, days: 0 };
+    t.days += 1;
+    teachers.set(row.user_id, t);
+  }
+  const person = teachers.get(who) ?? null;
+  const days = groupDays(person ? rows.filter((r) => r.user_id === person.id) : rows);
+
+  const oldest = days.at(-1)?.key.slice(0, 7) ?? today.slice(0, 7);
+  const everyMonth = monthsBack(today, oldest, Infinity);
+  const months = all ? everyMonth : everyMonth.slice(0, MONTHS_SHOWN);
+  const shown = days.filter((d) => d.key.slice(0, 7) >= months.at(-1));
+
+  const byDay = new Map(days.map((d) => [d.key, d]));
+  const max = Math.max(1, ...days.map((d) => d.messages));
+  const thisMonth = days.filter((d) => d.key.startsWith(today.slice(0, 7))).length;
+  const rules = days.reduce((sum, d) => sum + d.rules, 0);
+  const latest = days[0];
+
+  const link = (params) => {
+    const search = new URLSearchParams(Object.entries(params).filter(([, v]) => v)).toString();
+    return escape(`/admin/teaching${search ? `?${search}` : ''}`);
+  };
+  const range = all ? 'all' : '';
+  const filters =
+    teachers.size > 1
+      ? `<nav class="filters" aria-label="เลือกผู้สอน">
+          <a href="${link({ range })}"${person ? '' : ' aria-current="page"'}>ทุกคน</a>
+          ${[...teachers.values()]
+            .sort((a, b) => b.days - a.days || a.name.localeCompare(b.name, 'th'))
+            .map(
+              (t) => `<a href="${link({ who: t.id, range })}"${t === person ? ' aria-current="page"' : ''}>
+                ${escape(t.name)} <span class="meta">${t.days} วัน</span></a>`,
+            )
+            .join('')}
+        </nav>`
+      : '';
+
+  const stats = [
+    [days.length.toLocaleString('th-TH'), 'วันที่เข้ามาสอนทั้งหมด'],
+    [thisMonth.toLocaleString('th-TH'), `วันที่สอนใน${dayName(`${today.slice(0, 7)}-01`, { month: 'long' })}`],
+    [latest ? ago(latest.key, today) : '–', latest ? `สอนล่าสุด · ${longDay(latest.key)}` : 'ยังไม่เคยสอน'],
+    [rules.toLocaleString('th-TH'), 'กฎที่บันทึกจากการสอน'],
+  ]
+    .map(
+      ([value, label], i) => `<div class="tile"><span ${swatch(i)}></span>
+        <strong>${escape(value)}</strong><span>${escape(label)}</span></div>`,
+    )
+    .join('');
+
+  const legend = `<p class="legend" aria-hidden="true">น้อย
+    <i class="l1"></i><i class="l2"></i><i class="l3"></i><i class="l4"></i> มาก</p>`;
+
+  const body = `
+  <p class="meta">วันที่ผู้สอนเข้ามาคุยกับบอทใน LINE (นับตามเวลาไทย) สีเข้มตามจำนวนข้อความที่ส่งมาในวันนั้น
+    ${days.length ? `มากสุด ${max} ข้อความต่อวัน ` : ''}กดวันในปฏิทินเพื่อดูรายละเอียดด้านล่าง</p>
+  ${filters}
+  <section class="tiles stats">${stats}</section>
+
+  <section class="panel">
+    <div class="cal-head"><h2>ปฏิทินการสอน${person ? ` · ${escape(person.name)}` : ''}</h2>${legend}</div>
+    <div class="months">${months.map((m) => monthCalendar(m, byDay, today, max)).join('')}</div>
+    ${
+      everyMonth.length > months.length
+        ? `<p><a href="${link({ who: person?.id, range: 'all' })}">ดูย้อนหลังทั้งหมด (${everyMonth.length} เดือน) →</a></p>`
+        : ''
+    }
+  </section>
+
+  <section class="topic">
+    <h2>รายวัน${shown.length ? ` <span class="meta">${shown.length} วัน ใหม่สุดอยู่บน</span>` : ''}</h2>
+    ${shown.length ? shown.map((d) => dayEntry(d, today)).join('') : '<p class="note">ยังไม่มีใครเข้ามาสอนในช่วงนี้</p>'}
+  </section>
+  <div class="tip" role="tooltip" hidden></div>`;
+
+  return shell({ tab: '/admin/teaching', title: 'การสอน', query, body });
+}
+
 // ---------- หนังสือ ----------
 
 export function bookPage({ settings, topics, hiddenRules, hiddenQuestions, query }) {
@@ -621,6 +832,30 @@ const SCRIPT = `
   }
   reveal();
   addEventListener('hashchange', reveal);
+
+  // ป้ายบอกรายละเอียดตอนชี้หรือเลื่อนโฟกัสไปที่วันในปฏิทิน ใช้ป้ายเดียวย้ายไปมา
+  const tip = document.querySelector('.tip');
+  if (tip) {
+    const show = (el) => {
+      tip.textContent = el.dataset.tip;
+      tip.hidden = false;
+      const box = el.getBoundingClientRect();
+      const size = tip.getBoundingClientRect();
+      const left = Math.max(8, Math.min(box.left + box.width / 2 - size.width / 2, innerWidth - size.width - 8));
+      const top = box.top - size.height - 8 < 8 ? box.bottom + 8 : box.top - size.height - 8;
+      tip.style.left = left + 'px';
+      tip.style.top = top + 'px';
+    };
+    const toggle = (e) => {
+      const el = e.target.closest?.('[data-tip]');
+      if (el) show(el);
+      else tip.hidden = true;
+    };
+    document.addEventListener('pointerover', toggle);
+    document.addEventListener('focusin', toggle);
+    document.addEventListener('focusout', () => (tip.hidden = true));
+    addEventListener('scroll', () => (tip.hidden = true), { passive: true });
+  }
 `;
 
 const ADMIN_STYLE = `
@@ -719,4 +954,48 @@ button.link { font: inherit; font-size: .82rem; background: none; border: 0; pad
 .bubble.bot { justify-self: end; background: var(--accent-soft); border-color: transparent; box-shadow: none; border-bottom-right-radius: 4px; }
 .bubble p { margin-bottom: 4px; }
 .bubble footer { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
+
+/* ---------- หน้าการสอน ---------- */
+.stats { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+.stats .tile strong { font-size: 1.6rem; }
+@media (max-width: 480px) { .stats .tile strong { font-size: 1.3rem; } }
+.stats .tile:hover { border-color: var(--glass-line); }
+.filters .meta { font-size: .8rem; }
+.cal-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 16px; margin-bottom: 14px; }
+.cal-head h2 { margin: 0; }
+.legend { display: flex; align-items: center; gap: 4px; margin: 0; font-size: .85rem; color: var(--muted); }
+.legend i { width: 14px; height: 14px; border-radius: 4px; }
+.months { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 24px 32px; margin-bottom: 8px; }
+.month h3 { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin: 0 0 8px; font-size: 1.02rem; }
+.month h3 .meta { font-size: .82rem; font-weight: 400; }
+.cal { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+.cal .wd { text-align: center; font-size: .75rem; color: var(--muted); }
+.cal .d {
+  aspect-ratio: 1; display: grid; place-items: center; border-radius: 8px;
+  font-size: .85rem; color: var(--muted); text-decoration: none; font-variant-numeric: tabular-nums;
+}
+.cal .future { opacity: .45; }
+.cal a.d { font-weight: 700; transition: transform .12s, filter .12s; }
+.cal a.d:hover, .cal a.d:focus-visible { transform: translateY(-1px); filter: brightness(1.18); outline: none; }
+.cal .today { outline: 2px solid var(--ink); outline-offset: 2px; color: var(--ink); }
+/* สีเดียวไล่จากจางไปเข้มตามจำนวนข้อความ ผสมจากสีหลักของธีมกับพื้นแผ่น ใช้ได้ทั้งจอมืดและตอนพิมพ์ */
+.l1 { background: color-mix(in oklab, var(--accent) 44%, var(--paper)); }
+.l2 { background: color-mix(in oklab, var(--accent) 66%, var(--paper)); }
+.l3 { background: color-mix(in oklab, var(--accent) 84%, var(--paper)); }
+.l4 { background: var(--accent); }
+.cal .d.l1 { color: var(--ink); }
+.cal .d.l2, .cal .d.l3, .cal .d.l4 { color: var(--paper); }
+@media print { .cal .d.l2 { color: var(--ink); } }
+.day-entry { scroll-margin-top: 70px; }
+.day-entry:target { border-color: var(--accent); }
+.people { list-style: none; padding: 0; margin: 0; }
+.people li { display: grid; gap: 2px; padding: 8px 0; border-top: 1px dashed var(--line); }
+.people li:first-child { border-top: 0; padding-top: 2px; }
+.tip {
+  position: fixed; z-index: 5; max-width: min(320px, calc(100vw - 16px)); pointer-events: none;
+  padding: 8px 12px; border-radius: 10px; white-space: pre-line; font-size: .85rem; line-height: 1.5;
+  background: var(--paper); color: var(--ink); border: 1px solid var(--glass-line);
+  box-shadow: 0 18px 40px -20px var(--glass-shadow);
+}
+.tip[hidden] { display: none; }
 `;

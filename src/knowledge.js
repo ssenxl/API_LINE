@@ -483,6 +483,66 @@ export async function loadTimeline(limit) {
   return rows;
 }
 
+/**
+ * ผู้สอนแต่ละคนเข้ามาสอนวันไหนบ้าง (นับวันตามเวลาไทย) หนึ่งแถว = หนึ่งคนในหนึ่งวัน ใช้วาดปฏิทินหน้าการสอน
+ * - ผู้สอน = คนใน TEACHER_USER_IDS ตอนนี้ รวมกับคนที่เคยสอนกฎไว้ คนที่ถูกถอดสิทธิ์ไปแล้วประวัติจะได้ไม่หาย
+ * - ข้อความ = เฉพาะที่ผู้สอนพิมพ์หรือพูดมา ไม่นับคำตอบของบอท
+ * - กฎ = ที่บันทึกจากแชทในวันนั้น ไม่นับฉบับที่ผู้ดูแลแก้จากหน้าเว็บ เพราะวันนั้นผู้สอนไม่ได้เข้ามาสอน
+ * last_id รวมคำตอบของบอทด้วย ไว้ทำลิงก์เปิดแชทของวันนั้นให้เห็นจนถึงข้อความสุดท้าย
+ */
+export async function loadTeachingDays(teacherIds) {
+  const { rows } = await query(
+    `WITH teachers AS (
+       SELECT unnest($1::text[]) AS user_id
+       UNION
+       SELECT created_by FROM rules WHERE created_by <> '${ADMIN_ID}'
+     ),
+     chat AS (
+       SELECT to_char(m.created_at AT TIME ZONE 'Asia/Bangkok', 'YYYY-MM-DD') AS day, m.user_id,
+              count(*) FILTER (WHERE m.role = 'user') AS messages,
+              count(*) FILTER (WHERE m.role = 'user' AND m.source = 'voice') AS voices,
+              min(m.id) FILTER (WHERE m.role = 'user') AS first_id,
+              max(m.id) AS last_id,
+              min(m.created_at) FILTER (WHERE m.role = 'user') AS first_at,
+              max(m.created_at) FILTER (WHERE m.role = 'user') AS last_at
+       FROM messages m
+       WHERE m.user_id IN (SELECT user_id FROM teachers)
+       GROUP BY 1, 2
+       HAVING count(*) FILTER (WHERE m.role = 'user') > 0
+     ),
+     saved AS (
+       SELECT to_char(r.created_at AT TIME ZONE 'Asia/Bangkok', 'YYYY-MM-DD') AS day,
+              r.created_by AS user_id, count(*) AS rules
+       FROM rules r
+       WHERE r.created_by <> '${ADMIN_ID}'
+         AND NOT EXISTS (SELECT 1 FROM rule_changes c WHERE c.kind = 'edit' AND r.id = ANY(c.new_rule_ids))
+       GROUP BY 1, 2
+     ),
+     answered AS (
+       SELECT to_char(q.resolved_at AT TIME ZONE 'Asia/Bangkok', 'YYYY-MM-DD') AS day,
+              q.user_id, count(*) AS answered
+       FROM questions q
+       WHERE q.status = 'answered' AND q.resolved_at IS NOT NULL
+       GROUP BY 1, 2
+     )
+     SELECT day, user_id, COALESCE(u.display_name, '${UNKNOWN_NAME}') AS name,
+            COALESCE(c.messages, 0)::int AS messages, COALESCE(c.voices, 0)::int AS voices,
+            COALESCE(s.rules, 0)::int AS rules, COALESCE(a.answered, 0)::int AS answered,
+            c.first_id, c.last_id, c.first_at, c.last_at
+     FROM chat c
+     FULL JOIN saved s USING (day, user_id)
+     FULL JOIN answered a USING (day, user_id)
+     LEFT JOIN users u USING (user_id)
+     ORDER BY day DESC, messages DESC, name`,
+    [teacherIds],
+  );
+  return rows.map((r) => ({
+    ...r,
+    first_id: r.first_id === null ? null : Number(r.first_id),
+    last_id: r.last_id === null ? null : Number(r.last_id),
+  }));
+}
+
 export async function logAdmin(action, detail) {
   await query('INSERT INTO admin_log (action, detail) VALUES ($1, $2)', [action, detail]);
 }
