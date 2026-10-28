@@ -141,9 +141,12 @@ const DYES = [
 ];
 const WEAVES = 4;
 
+/** สามสีประจำบทที่ index (นับจาก 0) [สว่าง, เข้ม, สีแซม] ผังในหนังสือใช้สีชุดเดียวกับปกบท */
+export const dye = (index) => DYES[index % DYES.length];
+
 /** attribute ของชิ้นผ้าตัวอย่างประจำบทที่ index (นับจาก 0) */
 export const swatch = (index) => {
-  const [light, deep, accent] = DYES[index % DYES.length];
+  const [light, deep, accent] = dye(index);
   return `class="swatch weave-${index % WEAVES}" style="--c1:${light};--c2:${deep};--c3:${accent}"`;
 };
 
@@ -539,6 +542,8 @@ ${sizes}
     transition: transform .55s cubic-bezier(.2, .8, .2, 1), visibility 0s .55s;
   }
   .js.reading .reader { transform: none; visibility: visible; transition-delay: 0s; }
+  /* ส่วนที่มีแผนผังกว้าง ๆ (data-wide) เปิดแผ่นอ่านกว้างขึ้น ตัวหนังสือในผังจะได้ไม่ถูกย่อจนอ่านไม่ออก */
+  .js .reader.wide { width: min(1320px, 100%); }
   .js .bar {
     display: flex; align-items: center; gap: 6px; padding: 10px 14px;
     border-bottom: 1px solid var(--line);
@@ -1237,6 +1242,7 @@ function sceneClient() {
   function open(key, target) {
     whole = !key;
     reader.dataset.view = key ? 'one' : 'all';
+    reader.classList.toggle('wide', Boolean(key) && head(key).hasAttribute('data-wide'));
     for (const el of reader.querySelectorAll('[data-sec]')) el.classList.toggle('on', el.dataset.sec === key);
     const i = order.indexOf(key);
     link($('prev'), key ? order[i - 1] : null);

@@ -186,5 +186,14 @@ export async function migrate() {
       content     JSONB NOT NULL,
       updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
     );
+
+    -- ข้อมูลที่ AI เตรียมไว้วาดผังในหนังสือ เก็บไว้แบบเดียวกับตาราง chapters
+    -- key = 'flow:<ชื่อบท>' สำหรับผังขั้นตอนของบทนั้น และ 'map' สำหรับแผนผังทั้งเล่ม
+    CREATE TABLE IF NOT EXISTS diagrams (
+      key         TEXT PRIMARY KEY,
+      source_hash TEXT  NOT NULL,
+      content     JSONB NOT NULL,
+      updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
   `);
 }

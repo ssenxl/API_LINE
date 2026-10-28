@@ -311,3 +311,139 @@ export async function writeChapter(topic, rules) {
       .filter((s) => s.body),
   };
 }
+
+// ---------- 5. ผังขั้นตอนของบท (Flowchart) ----------
+
+// เปลี่ยนเลขนี้เมื่อแก้ FLOW_PROMPT เพื่อให้ทุกบทถูกวาดผังใหม่
+export const FLOW_PROMPT_VERSION = 1;
+
+/** ผังที่ยาวกว่านี้อ่านในจอเดียวไม่ไหวแล้ว */
+const MAX_FLOW_STEPS = 14;
+
+const FLOW_PROMPT = `คุณกำลังวาดผังขั้นตอน (flowchart) ของบทหนึ่งในหนังสือความรู้ของทีม ให้คนอ่านเห็นลำดับการทำงานในภาพเดียว
+
+ชื่อบท: {TOPIC}
+
+## กฎทั้งหมดในบทนี้
+{RULES}
+
+ขั้นแรก ตัดสินว่ากฎในบทนี้เรียงเป็นขั้นตอนการทำงานได้หรือไม่
+- ถ้าเป็นแค่คำนิยาม คำย่อ ความรู้ทั่วไป สเปก หรือข้อห้ามที่ไม่มีลำดับก่อนหลัง ให้ตอบ {"flow":false} อย่างเดียว ห้ามฝืนวาด
+- ถ้ามีลำดับ ให้วาดเส้นทางหลักจากต้นจนจบ ตามลำดับที่คนทำงานทำจริง
+
+กติกาการวาด
+- ทุกขั้นต้องมาจากกฎ ใส่เลขข้อที่เป็นที่มาใน rules ห้ามเพิ่มขั้นตอน เงื่อนไข หรือตัวเลขที่กฎไม่ได้พูดถึง
+- text สั้นที่สุดที่ยังอ่านรู้เรื่อง ไม่เกิน 32 ตัวอักษร ตัวเลข หน่วย และชื่อเฉพาะต้องตรงกับกฎ
+- type "step" คือสิ่งที่ต้องทำ ขึ้นต้นด้วยคำกริยา
+- type "decision" คือจุดที่ต้องเลือก text เป็นคำถามที่ตอบใช่หรือไม่ใช่ ลงท้ายด้วย ?
+  - continue: คำตอบที่ทำให้ไปขั้นถัดไปบนเส้นทางหลัก เป็น "ใช่" หรือ "ไม่"
+  - other: เกิดอะไรขึ้นถ้าได้คำตอบอีกแบบ
+    - kind "step" = ทำเพิ่มอย่างหนึ่ง แล้วกลับมาทำขั้นถัดไปบนเส้นทางหลัก
+    - kind "stop" = จบตรงนั้น หรือแยกไปทำเรื่องอื่น
+    - kind "unknown" = ไม่มีกฎข้อไหนบอกว่าต้องทำอะไร ใช้เฉพาะเมื่อไม่มีจริง ๆ (text บอกสั้น ๆ ว่ากรณีไหน)
+- who: คนหรือฝ่ายที่ทำขั้นนั้น ใส่เฉพาะเมื่อกฎบอกไว้ ถ้ากฎไม่บอกให้เว้นว่าง ห้ามเดา และเรียกฝ่ายเดียวกันด้วยชื่อเดียวกันทุกครั้ง
+- start: เหตุการณ์ที่ทำให้เริ่มขั้นตอนนี้ / end: ผลลัพธ์เมื่อทำครบ ถ้ากฎไม่บอกให้เว้นว่าง
+- ไม่เกิน ${MAX_FLOW_STEPS} ขั้น ถ้ากฎมีหลายเรื่องที่ไม่ต่อกัน ให้วาดเฉพาะเส้นทางหลักที่ใหญ่ที่สุด
+
+ตอบเป็น JSON เท่านั้น ในรูปแบบนี้
+{"flow":true,"start":"","steps":[{"type":"step","text":"","who":"","rules":[1]},{"type":"decision","text":"","who":"","rules":[2],"continue":"ใช่","other":{"kind":"step","text":"","who":""}}],"end":""}`;
+
+/**
+ * แปลงกฎในบทเป็นขั้นตอนสำหรับวาดผัง
+ * คืน { flow: false } ถ้าบทนี้ไม่ใช่ขั้นตอนการทำงาน
+ */
+export async function drawFlow(topic, rules) {
+  const system = fill(FLOW_PROMPT, { TOPIC: topic, RULES: formatRules(rules) });
+  const raw = await askJSON(system, [{ role: 'user', content: `วาดผังขั้นตอนของบท "${topic}"` }]);
+  if (raw.flow !== true) return { flow: false };
+
+  const known = new Set(rules.map((r) => r.id));
+  const ids = (value) => [...new Set(list(value).map(posInt).filter((id) => known.has(id)))];
+  const kinds = ['step', 'stop', 'unknown'];
+  const steps = list(raw.steps)
+    .map((s) => {
+      const step = { text: text(s?.text, 80), who: text(s?.who, 40), rules: ids(s?.rules) };
+      if (!step.text) return null;
+      if (s.type !== 'decision') return { type: 'step', ...step };
+      const other = s.other ?? {};
+      return {
+        type: 'decision',
+        ...step,
+        continue: s.continue === 'ไม่' ? 'ไม่' : 'ใช่',
+        other: {
+          kind: kinds.includes(other.kind) ? other.kind : 'unknown',
+          text: text(other.text, 80),
+          who: text(other.who, 40),
+        },
+      };
+    })
+    .filter(Boolean)
+    .slice(0, MAX_FLOW_STEPS);
+
+  // ขั้นเดียวไม่ใช่ผัง
+  if (steps.length < 2) return { flow: false };
+  return { flow: true, start: text(raw.start, 80), end: text(raw.end, 80), steps };
+}
+
+// ---------- 6. แผนผังทั้งเล่ม (Mind map) ----------
+
+// เปลี่ยนเลขนี้เมื่อแก้ MAP_PROMPT เพื่อให้แผนผังทั้งเล่มถูกทำใหม่
+export const MAP_PROMPT_VERSION = 1;
+
+/** กฎข้อหนึ่งโยงไปหาข้ออื่นได้ไม่เกินกี่เส้น เกินนี้แผนผังจะรกจนอ่านไม่ออก */
+const MAX_LINKS_PER_RULE = 4;
+
+const MAP_PROMPT = `คุณกำลังทำแผนผังความรู้ของหนังสือทั้งเล่ม จากกฎทุกข้อด้านล่าง (ในวงเล็บเหลี่ยมคือชื่อบท)
+
+## กฎทั้งหมด
+{RULES}
+
+ทำ 2 อย่าง
+1. labels: ตั้งชื่อสั้นให้กฎทุกข้อ ไม่เกิน 24 ตัวอักษร พอให้รู้ว่าข้อนี้เรื่องอะไร ใช้คำจากกฎ ห้ามใส่ข้อมูลที่กฎไม่มี
+2. links: จับคู่กฎที่อยู่คนละบทแต่เกี่ยวข้องกันโดยตรง คือ
+   - ผลของข้อหนึ่งเป็นเงื่อนไข ข้อมูลตั้งต้น หรือจุดเริ่มของอีกข้อ
+   - พูดถึงของชิ้นเดียวกัน ตัวเลขเดียวกัน หรือสูตรเดียวกัน ในอีกขั้นตอนหนึ่ง
+   - ข้อหนึ่งใช้คำศัพท์ที่อีกข้ออธิบายความหมายไว้
+   - ต้องรู้ข้อหนึ่งก่อน ถึงจะทำตามอีกข้อได้ถูก
+   ไม่นับการที่แค่อยู่ในเรื่องกว้าง ๆ เดียวกัน เช่น พูดถึง "การผลิต" เหมือนกัน
+   - why: เกี่ยวกันอย่างไร ไม่เกิน 60 ตัวอักษร
+   - กฎข้อหนึ่งจับคู่ได้ไม่เกิน ${MAX_LINKS_PER_RULE} ข้อ ไม่แน่ใจให้ข้าม น้อยแต่แม่นดีกว่าเยอะแต่มั่ว
+
+ตอบเป็น JSON เท่านั้น ในรูปแบบนี้
+{"labels":[{"id":1,"label":""}],"links":[{"a":1,"b":2,"why":""}]}`;
+
+/**
+ * ชื่อสั้นของกฎทุกข้อ (ชื่อจริงยาวเกินกว่าจะวางบนกิ่งของแผนผัง)
+ * กับคู่กฎต่างบทที่เกี่ยวข้องกัน ใช้วาดเส้นเชื่อมในแผนผังและป้าย "เกี่ยวข้องกับบทอื่น" ในผังขั้นตอน
+ */
+export async function mapBook(rules) {
+  const system = fill(MAP_PROMPT, { RULES: formatRules(rules) });
+  // ชื่อสั้นต้องได้ครบทุกข้อ หนังสือยิ่งหนา คำตอบยิ่งยาว
+  const raw = await askJSON(system, [{ role: 'user', content: 'ทำแผนผังทั้งเล่ม' }], {
+    maxOutputTokens: Math.max(config.ai.maxOutputTokens, 6000 + rules.length * 60),
+  });
+
+  const byId = new Map(rules.map((r) => [r.id, r]));
+  const labels = [];
+  for (const item of list(raw.labels)) {
+    const id = posInt(item?.id);
+    const label = text(item?.label, 60);
+    if (id && byId.has(id) && label && !labels.some((l) => l.id === id)) labels.push({ id, label });
+  }
+
+  const seen = new Set();
+  const count = new Map();
+  const links = [];
+  for (const item of list(raw.links)) {
+    const a = posInt(item?.a);
+    const b = posInt(item?.b);
+    if (!a || !b || !byId.has(a) || !byId.has(b) || byId.get(a).topic === byId.get(b).topic) continue;
+    const key = a < b ? `${a}-${b}` : `${b}-${a}`;
+    if (seen.has(key) || (count.get(a) ?? 0) >= MAX_LINKS_PER_RULE || (count.get(b) ?? 0) >= MAX_LINKS_PER_RULE) continue;
+    seen.add(key);
+    count.set(a, (count.get(a) ?? 0) + 1);
+    count.set(b, (count.get(b) ?? 0) + 1);
+    links.push({ a, b, why: text(item?.why, 120) });
+  }
+  return { labels, links };
+}

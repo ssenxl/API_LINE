@@ -11,7 +11,15 @@ import {
   layoutScene,
   swatch,
 } from './book-scene.js';
-import { CHAPTER_PROMPT_VERSION, writeChapter } from './brain.js';
+import { DIAGRAM_DEFS, DIAGRAM_SCRIPT, DIAGRAM_STYLE, diagramContext, flowFigure, mapSection } from './book-diagrams.js';
+import {
+  CHAPTER_PROMPT_VERSION,
+  FLOW_PROMPT_VERSION,
+  MAP_PROMPT_VERSION,
+  drawFlow,
+  mapBook,
+  writeChapter,
+} from './brain.js';
 import { config } from './config.js';
 import * as kb from './knowledge.js';
 
@@ -27,6 +35,8 @@ const CHAPTER_CONCURRENCY = 3;
 /** ส่วนของเล่มที่ผู้ดูแลเปิดปิดได้จากหน้า /admin/book ค่าเริ่มต้นคือแสดงทุกส่วน */
 export const BOOK_SECTIONS = [
   { key: 'howto', label: 'กล่อง "วิธีอ่านเล่มนี้"' },
+  { key: 'map', label: 'หน้า "ภาพรวมทั้งเล่ม" (แผนผังความคิด และวงโคจร)' },
+  { key: 'flow', label: 'ผังขั้นตอนในแต่ละบท (ทีละขั้น และแยกตามฝ่าย)' },
   { key: 'gaps', label: 'กล่อง "สิ่งที่ยังไม่ชัด" ท้ายบท (คำถามค้าง)' },
   { key: 'sources', label: 'คำพูดต้นฉบับของผู้สอนใต้กฎแต่ละข้อ' },
   { key: 'audio', label: 'ปุ่มฟังเสียงต้นฉบับ' },
@@ -78,10 +88,18 @@ export function warmBook() {
     });
 }
 
-/** กรองของที่ผู้ดูแลซ่อน แล้วเตรียมเนื้อหาของทุกบท (ใส่ data.show ไว้ให้ page() ใช้ต่อด้วย) */
+/**
+ * กรองของที่ผู้ดูแลซ่อน แล้วเตรียมเนื้อหาของทุกบท
+ * ใส่ data.show (ส่วนที่เปิดอยู่) กับ data.map (แผนผังทั้งเล่ม) ไว้ให้ page() ใช้ต่อด้วย
+ */
 async function buildChapters(data) {
   const settings = bookSettings(data.settings);
   data.show = settings.sections;
+  const show = settings.sections;
+
+  // แผนผังทั้งเล่มทำจากกฎที่ใช้อยู่ทุกข้อ รวมข้อที่ซ่อนไว้ ผู้ดูแลกดซ่อน/แสดงบทจะได้ไม่ต้องเสียค่า AI ทำใหม่
+  // ตอนวาดจะตัดเส้นที่ไปถึงข้อที่ซ่อนออกเอง
+  const everyActive = data.rules.filter((r) => r.status === 'active');
 
   // กฎที่ซ่อนต้องไม่ถูกส่งให้ AI เรียบเรียงด้วย ไม่งั้นเนื้อหาบทจะเล่าถึงกฎที่ตั้งใจซ่อน
   const hiddenTopics = new Set(settings.hiddenTopics);
@@ -96,44 +114,81 @@ async function buildChapters(data) {
   }
   const topics = [...byTopic.keys()].sort((a, b) => a.localeCompare(b, 'th'));
 
-  const contents = await mapLimit(topics, CHAPTER_CONCURRENCY, (topic) =>
-    chapterContent(topic, byTopic.get(topic), data.chapters.get(topic)),
-  );
+  // ส่วนที่ผู้ดูแลปิดไว้ไม่ต้องเสียค่า AI เตรียม ป้ายเกี่ยวข้องกับบทอื่นในผังขั้นตอนก็ใช้แผนผังทั้งเล่มด้วย
+  const [contents, flows, map] = await Promise.all([
+    mapLimit(topics, CHAPTER_CONCURRENCY, (topic) => chapterContent(topic, byTopic.get(topic), data.chapters.get(topic))),
+    show.flow
+      ? mapLimit(topics, CHAPTER_CONCURRENCY, (topic) => chapterFlow(topic, byTopic.get(topic), data.diagrams.get(`flow:${topic}`)))
+      : [],
+    (show.map || show.flow) && everyActive.length ? bookMap(everyActive, data.diagrams.get('map')) : null,
+  ]);
+  data.map = map;
   return topics.map((topic, i) => ({
     topic,
     rules: byTopic.get(topic),
     content: contents[i],
+    flow: flows[i] ?? null,
   }));
 }
 
-/** บทที่ AI กำลังเขียนอยู่ คนที่เปิดหนังสือระหว่างนั้นรอผลชุดเดียวกัน ไม่สั่ง AI เขียนซ้ำ */
-const writing = new Map();
+/** งานที่ AI กำลังทำอยู่ คนที่เปิดหนังสือระหว่างนั้นรอผลชุดเดียวกัน ไม่สั่ง AI ทำซ้ำ */
+const working = new Map();
 
-function chapterContent(topic, rules, cached) {
-  const hash = crypto
-    .createHash('sha1')
-    .update(JSON.stringify([CHAPTER_PROMPT_VERSION, rules.map((r) => [r.id, r.title, r.summary])]))
-    .digest('hex');
+/**
+ * ของที่ให้ AI ทำครั้งเดียวแล้วเก็บไว้ ทำใหม่เฉพาะเมื่อ source (กฎที่ใช้ทำ หรือเลขเวอร์ชันคำสั่ง) เปลี่ยน
+ * ทำไม่สำเร็จคืน null และไม่บันทึก เปิดหนังสือครั้งหน้าจะลองใหม่เอง
+ */
+function cachedByAI({ key, source, cached, make, save, what }) {
+  const hash = crypto.createHash('sha1').update(JSON.stringify(source)).digest('hex');
   if (cached?.source_hash === hash) return cached.content;
 
-  const key = `${topic}\n${hash}`;
-  if (!writing.has(key)) {
-    writing.set(key, writeAndSave(topic, rules, hash).finally(() => writing.delete(key)));
+  const job = `${key}\n${hash}`;
+  if (!working.has(job)) {
+    const run = (async () => {
+      try {
+        const content = await make();
+        await save(hash, content);
+        return content;
+      } catch (err) {
+        console.error(`[book] ${what} ไม่สำเร็จ:`, err.message);
+        return null;
+      }
+    })();
+    working.set(job, run.finally(() => working.delete(job)));
   }
-  return writing.get(key);
+  return working.get(job);
 }
 
-async function writeAndSave(topic, rules, hash) {
-  try {
-    const content = await writeChapter(topic, rules);
-    await kb.saveChapter(topic, hash, content);
-    return content;
-  } catch (err) {
-    // เขียนบทไม่สำเร็จก็ยังแสดงรายการกฎได้ ไม่ต้องให้ทั้งหน้าพัง
-    console.error(`[book] เรียบเรียงบท "${topic}" ไม่สำเร็จ:`, err.message);
-    return null;
-  }
-}
+// เขียนบทไม่สำเร็จก็ยังแสดงรายการกฎได้ ไม่ต้องให้ทั้งหน้าพัง
+const chapterContent = (topic, rules, cached) =>
+  cachedByAI({
+    key: `chapter:${topic}`,
+    source: [CHAPTER_PROMPT_VERSION, rules.map((r) => [r.id, r.title, r.summary])],
+    cached,
+    make: () => writeChapter(topic, rules),
+    save: (hash, content) => kb.saveChapter(topic, hash, content),
+    what: `เรียบเรียงบท "${topic}"`,
+  });
+
+const chapterFlow = (topic, rules, cached) =>
+  cachedByAI({
+    key: `flow:${topic}`,
+    source: [FLOW_PROMPT_VERSION, topic, rules.map((r) => [r.id, r.title, r.summary])],
+    cached,
+    make: () => drawFlow(topic, rules),
+    save: (hash, content) => kb.saveDiagram(`flow:${topic}`, hash, content),
+    what: `วาดผังขั้นตอนของบท "${topic}"`,
+  });
+
+const bookMap = (rules, cached) =>
+  cachedByAI({
+    key: 'map',
+    source: [MAP_PROMPT_VERSION, rules.map((r) => [r.id, r.topic, r.title, r.summary])],
+    cached,
+    make: () => mapBook(rules),
+    save: (hash, content) => kb.saveDiagram('map', hash, content),
+    what: 'ทำแผนผังทั้งเล่ม',
+  });
 
 async function mapLimit(items, limit, fn) {
   const results = new Array(items.length);
@@ -380,12 +435,15 @@ function gapsAside(questions, { show, labels }) {
 
 function chapterSection(chapter, index, data) {
   const { content } = chapter;
+  // ผังขั้นตอนอยู่ใต้คำอธิบายบท อ่านภาพรวมแล้วเห็นลำดับงานก่อนลงรายละเอียด
+  const flow = data.show.flow ? flowFigure(chapter, index, data.dg) : '';
   const body = content
     ? `${content.overview ? `<div class="overview">${prose(content.overview, data.labels)}</div>` : ''}
+       ${flow}
        ${content.sections
          .map((s) => `${s.heading ? `<h3>${escape(s.heading)}</h3>` : ''}${prose(s.body, data.labels)}`)
          .join('')}`
-    : `<p class="note">ยังเรียบเรียงบทนี้ไม่สำเร็จ ลองเปิดหน้านี้ใหม่อีกครั้ง ระหว่างนี้อ่านจากรายการกฎด้านล่างได้</p>`;
+    : `<p class="note">ยังเรียบเรียงบทนี้ไม่สำเร็จ ลองเปิดหน้านี้ใหม่อีกครั้ง ระหว่างนี้อ่านจากรายการกฎด้านล่างได้</p>${flow}`;
 
   return `<section class="chapter" id="ch-${index + 1}" data-sec="ch-${index + 1}"
       data-title="บทที่ ${index + 1} · ${escape(chapter.topic)}">
@@ -458,6 +516,9 @@ const ICONS = {
   howto:
     'M12 6.5c-2.2-1.6-5.3-1.6-8 0v11c2.7-1.6 5.8-1.6 8 0m0-11c2.2-1.6 5.3-1.6 8 0v11c-2.7-1.6-5.8-1.6-8 0m0-11v11',
   all: 'M7 4h10a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1zM9.5 9h5M9.5 12h5M9.5 15h3',
+  // วงกลางหนึ่งวงโยงไปวงเล็กสี่มุม แทนแผนผังความรู้
+  map:
+    'M12 9.5a2.5 2.5 0 1 1 0 5a2.5 2.5 0 1 1 0-5zM5 4.2a1.8 1.8 0 1 1 0 3.6a1.8 1.8 0 1 1 0-3.6zM19 4.2a1.8 1.8 0 1 1 0 3.6a1.8 1.8 0 1 1 0-3.6zM5 16.2a1.8 1.8 0 1 1 0 3.6a1.8 1.8 0 1 1 0-3.6zM19 16.2a1.8 1.8 0 1 1 0 3.6a1.8 1.8 0 1 1 0-3.6zM10.1 10.4L6.4 7.1M13.9 10.4l3.7-3.3M10.1 13.6l-3.7 3.3M13.9 13.6l3.7 3.3',
 };
 
 /**
@@ -528,7 +589,7 @@ function scene({ chapters, labels, facts, shortcuts }) {
         </button>
         ${shortcuts
           .filter((s) => s.icon && s.icon !== 'howto')
-          .map((s) => `<a href="${s.href}">${s.title}</a>`)
+          .map((s) => `<a href="${s.href}">${s.short ?? s.title}</a>`)
           .join('')}
       </nav>
       <h1>${escape(config.book.title)}</h1>
@@ -543,6 +604,8 @@ function page(data, chapters) {
   const { show } = data;
   data.rulesById = new Map(data.rules.map((r) => [r.id, r]));
   data.labels = chapterLabels(chapters);
+  data.dg = diagramContext(chapters, data.map, data.labels);
+  const showMap = show.map && chapters.length > 0;
   const activeCount = data.rules.filter((r) => r.status === 'active').length;
   const retired = show.retired ? data.rules.filter((r) => r.status === 'retired') : [];
   const teachers = new Set(data.rules.map((r) => r.author)).size;
@@ -552,6 +615,10 @@ function page(data, chapters) {
   const empty = 'ยังไม่มีความรู้ในเล่ม เริ่มเล่ากฎหรือวิธีทำงานให้บอทฟังผ่าน LINE ได้เลย';
 
   const toc = [
+    showMap
+      ? `<li><a href="#map">ภาพรวมทั้งเล่ม · แผนผังความรู้</a>
+          <span>${data.dg.links.length ? `${data.dg.links.length} คู่ที่เกี่ยวกัน` : `${chapters.length} บท`}</span></li>`
+      : '',
     ...chapters.map(
       (c, i) => `<li><a href="#ch-${i + 1}">บทที่ ${i + 1} · ${escape(c.topic)}</a>
         <span>${c.rules.length} ข้อ</span></li>`,
@@ -568,11 +635,12 @@ function page(data, chapters) {
   const main =
     chapters.length === 0
       ? `<p class="note" data-sec="front">${empty}</p>`
-      : chapters.map((c, i) => chapterSection(c, i, data)).join('');
+      : `${showMap ? mapSection(data.dg) : ''}${chapters.map((c, i) => chapterSection(c, i, data)).join('')}`;
 
   const hasToc = Boolean(chapters.length || toc);
   const shortcuts = [
     hasToc && { href: '#toc', icon: 'toc', title: 'สารบัญ', sub: `${chapters.length} บท` },
+    showMap && { href: '#map', icon: 'map', title: 'ภาพรวมทั้งเล่ม', sub: 'แผนผังความรู้', short: 'แผนผัง' },
     show.howto && { href: '#howto', icon: 'howto', title: 'วิธีอ่านเล่มนี้' },
     openConflicts.length && { href: '#open', count: openConflicts.length, title: 'เรื่องที่รอคำตอบ' },
     closedConflicts.length && {
@@ -601,9 +669,10 @@ function page(data, chapters) {
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&family=Trirong:wght@500;600;700&display=swap" rel="stylesheet">
-<style>${STYLE}${THEME_STYLE}${SCENE_STYLE}</style>
+<style>${STYLE}${THEME_STYLE}${SCENE_STYLE}${DIAGRAM_STYLE}</style>
 </head>
 <body>
+${DIAGRAM_DEFS}
 ${scene({ chapters, labels: data.labels, facts, shortcuts })}
 <div class="scrim" id="scrim"></div>
 <div class="reader" id="reader" tabindex="-1" aria-label="เนื้อหาในเล่ม">
@@ -684,6 +753,7 @@ ${scene({ chapters, labels: data.labels, facts, shortcuts })}
   // สั่งพิมพ์ / บันทึกเป็น PDF แล้วให้เนื้อหาที่พับไว้ออกมาครบ
   addEventListener('beforeprint', () => document.querySelectorAll('details').forEach((d) => (d.open = true)));
   ${SCENE_SCRIPT}
+  ${DIAGRAM_SCRIPT}
 </script>
 </body>
 </html>`;
@@ -695,6 +765,8 @@ const HOWTO = `<aside class="howto" id="howto" data-sec="front">
       <li>หน้าแรกเป็นฉาก 3 มิติ ลากเพื่อหมุนดูได้รอบทิศ แตะการ์ดของบทไหนก็เปิดอ่านบทนั้น อยากอ่านต่อกันทั้งเล่มหรือสั่งพิมพ์ให้กด "อ่านทั้งเล่ม"</li>
       <li>หาเรื่องที่ต้องการได้จากช่อง "ค้นหาในเล่ม" หรือปุ่มแว่นขยาย พิมพ์คำแล้วกดผลที่ขึ้นมา จะเปิดไปที่กฎหรือย่อหน้านั้นเลย</li>
       <li>แต่ละบทเริ่มด้วยคำอธิบายที่ AI เรียบเรียงจากกฎทั้งหมดในบทนั้น ให้อ่านเข้าใจภาพรวมก่อน</li>
+      <li>บทที่เป็นขั้นตอนการทำงานจะมีผังขั้นตอนอยู่ใต้คำอธิบาย สลับดูแบบ "ทีละขั้น" หรือ "แยกตามฝ่าย" ได้ กดเลขข้อในผังเพื่อดูกฎ กดป้ายลูกศรเพื่อไปกฎที่เกี่ยวข้องในบทอื่น</li>
+      <li>หน้า "ภาพรวมทั้งเล่ม" มีแผนผังความคิดกับวงโคจร ให้เห็นว่าบทไหนเกี่ยวกับบทไหน ชื่อสั้นและเส้นเชื่อมพวกนี้ AI สรุปให้ ให้ยึดตัวกฎเป็นหลัก</li>
       <li>ท้ายบทคือรายการกฎทีละข้อ เลขอย่าง <span class="ref">1.2</span> คือบทที่ 1 ข้อที่ 2 กดเพื่อไปดูข้อนั้นได้</li>
       <li>เลขเล็ก ๆ มุมขวาของกฎ เช่น #12 คือเลขที่บอทใช้อ้างใน LINE เลขนี้ไม่เปลี่ยน ส่วนเลขบทอาจขยับเมื่อมีบทใหม่</li>
       <li>กด "คำพูดต้นฉบับ" เพื่ออ่านสิ่งที่ผู้สอนพิมพ์มาจริง ๆ ถ้าคำสรุปของ AI กับต้นฉบับไม่ตรงกัน ให้ถือต้นฉบับเป็นหลัก</li>

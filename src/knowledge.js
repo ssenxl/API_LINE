@@ -945,7 +945,7 @@ export async function purgeTrash(ids) {
 
 /** ดึงทุกอย่างที่หนังสือต้องใช้ในครั้งเดียว */
 export async function loadBook() {
-  const [rules, sources, changes, conflicts, questions, chapters, settings] = await Promise.all([
+  const [rules, sources, changes, conflicts, questions, chapters, diagrams, settings] = await Promise.all([
     query(
       `SELECT r.*, COALESCE(u.display_name, '${UNKNOWN_NAME}') AS author
        FROM rules r LEFT JOIN users u ON u.user_id = r.created_by
@@ -982,6 +982,7 @@ export async function loadBook() {
        ORDER BY q.id`,
     ),
     query('SELECT topic, source_hash, content FROM chapters'),
+    query('SELECT key, source_hash, content FROM diagrams'),
     getSetting('book'),
   ]);
 
@@ -992,8 +993,18 @@ export async function loadBook() {
     conflicts: conflicts.rows,
     questions: questions.rows,
     chapters: new Map(chapters.rows.map((c) => [c.topic, c])),
+    diagrams: new Map(diagrams.rows.map((d) => [d.key, d])),
     settings,
   };
+}
+
+export async function saveDiagram(key, sourceHash, content) {
+  await query(
+    `INSERT INTO diagrams (key, source_hash, content) VALUES ($1, $2, $3)
+     ON CONFLICT (key) DO UPDATE
+       SET source_hash = EXCLUDED.source_hash, content = EXCLUDED.content, updated_at = now()`,
+    [key, sourceHash, JSON.stringify(content)],
+  );
 }
 
 export async function saveChapter(topic, sourceHash, content) {
