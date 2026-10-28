@@ -608,19 +608,16 @@ ${sizes}
     opacity: 0; pointer-events: none; transition: opacity .45s;
   }
   .js.reading .scrim { opacity: 1; pointer-events: auto; }
+  /* แผ่นอ่านเต็มจอ เลื่อนเข้ามาจากขวา */
   .js .reader {
-    position: fixed; top: 0; right: 0; bottom: 0; width: min(780px, 100%);
+    position: fixed; inset: 0;
     display: flex; flex-direction: column; outline: 0;
     background: var(--bg); background: color-mix(in srgb, var(--bg) 88%, transparent);
     -webkit-backdrop-filter: blur(28px) saturate(1.4); backdrop-filter: blur(28px) saturate(1.4);
-    border-left: 1px solid var(--glass-line);
-    box-shadow: -40px 0 90px -40px var(--glass-shadow);
     transform: translateX(105%); visibility: hidden;
     transition: transform .55s cubic-bezier(.2, .8, .2, 1), visibility 0s .55s;
   }
   .js.reading .reader { transform: none; visibility: visible; transition-delay: 0s; }
-  /* ส่วนที่มีแผนผังกว้าง ๆ (data-wide) เปิดแผ่นอ่านกว้างขึ้น ตัวหนังสือในผังจะได้ไม่ถูกย่อจนอ่านไม่ออก */
-  .js .reader.wide { width: min(1320px, 100%); }
   .js .bar {
     display: flex; align-items: center; gap: 6px; padding: 10px 14px;
     border-bottom: 1px solid var(--line);
@@ -674,17 +671,15 @@ ${sizes}
     100% { box-shadow: 0 0 0 3px transparent, 0 0 28px transparent; }
   }
   .js .sheet { flex: 1; overflow-y: auto; overscroll-behavior: contain; }
-  .js .sheet main { max-width: none; padding: 28px 32px 96px; }
+  /* เนื้อหาอยู่กลางจอ กว้างพอให้บรรทัดไม่ยาวจนอ่านยาก
+     ส่วนที่มีแผนผังกว้าง ๆ (data-wide) ขยายให้ผังได้ขนาดจริง ตัวหนังสือในผังจะได้ไม่ถูกย่อจนอ่านไม่ออก */
+  .js .sheet main { max-width: 880px; padding: 28px 32px 96px; }
+  .js .reader.wide .sheet main { max-width: 1384px; }
   .js .reader[data-view="one"] [data-sec]:not(.on) { display: none; }
   /* เปิดจากลิงก์ตรงแล้วเบราว์เซอร์เลื่อนไปที่หัวข้อเอง เว้นระยะไว้ไม่ให้ชิดแถบด้านบน */
   .js .sheet [data-sec] { scroll-margin-top: 28px; }
   .js .reader[data-view="one"] .chapter { margin-top: 0; padding-top: 0; border-top: 0; }
 
-  /* จอกว้าง: เลื่อนฉากไปทางซ้ายให้ยังเห็นการ์ดอยู่ข้างแผ่นอ่าน */
-  @media (min-width: 1280px) {
-    .threads, .stage { transition: transform .55s cubic-bezier(.2, .8, .2, 1); }
-    .js.reading .threads, .js.reading .stage { transform: translateX(-390px); }
-  }
   @media (max-width: 640px) {
     .hud { padding-left: 18px; padding-right: 18px; }
     /* จอแคบ: หัวหน้ากินที่หลายบรรทัด จึงเลื่อนฉากลงให้พ้น (สคริปต์จะวางตำแหน่งจริงตามความสูงของหัวหน้าอีกที) */
@@ -707,7 +702,7 @@ ${sizes}
 }
 @media (prefers-reduced-motion: reduce) {
   .stage, .figure img { animation: none; }
-  .card, .scrim, .threads, .stage, .js .reader { transition: none; }
+  .card, .scrim, .js .reader { transition: none; }
 }
 `;
 
