@@ -599,6 +599,9 @@ ${sizes}
 .hint { align-self: center; margin: 0; color: var(--on-glass-muted); transition: opacity .8s; }
 .hint.gone { opacity: 0; }
 
+/* แถบข้างของแผ่นอ่านขึ้นเฉพาะจอกว้าง (ดูด้านล่าง) ตอนพิมพ์ไม่ต้องมี */
+.side, .outline { display: none; }
+
 /* ---------- แผ่นอ่านเนื้อหา (เฉพาะบนจอและเมื่อ JavaScript ทำงาน) ---------- */
 @media screen {
   .js, .js body { height: 100%; overflow: hidden; }
@@ -678,7 +681,63 @@ ${sizes}
   .js .reader[data-view="one"] [data-sec]:not(.on) { display: none; }
   /* เปิดจากลิงก์ตรงแล้วเบราว์เซอร์เลื่อนไปที่หัวข้อเอง เว้นระยะไว้ไม่ให้ชิดแถบด้านบน */
   .js .sheet [data-sec] { scroll-margin-top: 28px; }
+  .js .sheet h2, .js .sheet h3, .js .sheet figure { scroll-margin-top: 24px; }
   .js .reader[data-view="one"] .chapter { margin-top: 0; padding-top: 0; border-top: 0; }
+
+  /* ---------- แถบข้างแผ่นอ่าน (จอกว้าง) ----------
+     ซ้าย: ทุกส่วนของเล่ม  ขวา: หัวข้อกับกฎในส่วนที่อ่านอยู่
+     วางในที่ว่างสองข้าง เนื้อหาจึงยังอยู่กลางจอ และอยู่ในกรอบที่เลื่อนเดียวกัน เลื่อนเมาส์ตรงไหนก็เลื่อนเนื้อหาได้ */
+  @media (min-width: 1280px) {
+    /* container-type ให้แถบข้างสูงได้เท่าแผ่นอ่านพอดี (100cqh) */
+    .js .sheet {
+      container-type: size; display: grid; align-items: start;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 880px) minmax(0, 1fr);
+    }
+    .js .reader.wide .sheet { grid-template-columns: minmax(0, 1fr) minmax(0, 1384px) minmax(0, 1fr); }
+    .js .sheet main { grid-area: 1 / 2; width: 100%; }
+    .js .side:not([hidden]), .js .outline:not([hidden]) {
+      display: block; grid-row: 1; position: sticky; top: 0;
+      max-height: 100cqh; overflow-y: auto; scrollbar-width: thin; padding: 44px 20px 40px;
+    }
+    .js .side { grid-column: 1; justify-self: end; width: min(300px, 100%); }
+    .js .outline { grid-column: 3; justify-self: start; width: min(280px, 100%); }
+    /* ภาพรวมทั้งเล่มไม่มีหัวข้อย่อยให้แสดงทางขวา */
+    .js .reader.wide .outline { display: none; }
+  }
+  /* ผังใหญ่ต้องได้ที่ก่อน แถบซ้ายขึ้นเฉพาะจอที่กว้างพอเหลือที่ข้างผัง */
+  @media (min-width: 1280px) and (max-width: 1839px) {
+    .js .reader.wide .side { display: none; }
+  }
+  .side-label { margin: 0 0 10px 16px; font-size: .76rem; font-weight: 600; letter-spacing: .14em; color: var(--muted); }
+  .side ol, .outline ol { list-style: none; margin: 0; padding: 0; border-left: 1px solid var(--line); }
+  .side ol a, .outline a {
+    position: relative; display: block; padding: 7px 12px 7px 16px; border-radius: 0 10px 10px 0;
+    color: var(--muted); text-decoration: none; line-height: 1.45; font-size: .92rem;
+    transition: color .2s, background-color .2s;
+  }
+  /* เส้นด้ายเส้นเดียวไล่ลงมาทางซ้าย ช่วงที่อ่านอยู่สว่างขึ้น */
+  .side ol a::before, .outline a::before {
+    content: ''; position: absolute; left: -1.5px; top: 6px; bottom: 6px; width: 2px; border-radius: 2px;
+    transition: background-color .2s, box-shadow .2s;
+  }
+  .side ol a:hover, .outline a:hover { color: var(--ink); background: var(--accent-soft); }
+  .side ol a[aria-current], .outline a[aria-current] { color: var(--ink); font-weight: 600; }
+  .side ol a[aria-current] { background: color-mix(in srgb, var(--paper) 75%, transparent); }
+  .side ol a[aria-current]::before, .outline a[aria-current]::before {
+    background: var(--shine); box-shadow: 0 0 10px rgba(var(--thread), .7);
+  }
+  .side .k { display: block; font-size: .76rem; font-weight: 600; letter-spacing: .08em; color: var(--accent); }
+  .side .all {
+    display: inline-block; margin: 18px 0 0 16px; padding: 6px 16px; border-radius: 999px;
+    border: 1px solid var(--line); background: var(--paper); color: var(--ink); font-size: .86rem; text-decoration: none;
+  }
+  .side .all:hover, .side .all[aria-current] { border-color: var(--shine); color: var(--shine); }
+  .side .all[aria-current] { box-shadow: 0 0 16px -4px rgba(var(--thread), .6); }
+  .outline a { font-size: .86rem; }
+  .outline a.group { margin-top: 10px; font-size: .78rem; font-weight: 600; letter-spacing: .04em; }
+  .outline .is-rule { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px; }
+  .outline .k { color: var(--accent); font-weight: 600; font-variant-numeric: tabular-nums; }
+  .outline .is-rule .t { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 
   @media (max-width: 640px) {
     .hud { padding-left: 18px; padding-right: 18px; }
@@ -1313,9 +1372,146 @@ function sceneClient() {
     el.title = head(key).dataset.title || '';
   }
 
+  // ---------- แถบข้างแผ่นอ่าน (จอกว้าง) ----------
+  // ซ้ายคือทุกส่วนของเล่ม ขวาคือหัวข้อกับกฎในส่วนที่อ่านอยู่ ทั้งสองแถบไฮไลต์ตามที่เลื่อนอ่านมาถึง
+
+  const side = $('side');
+  const outline = $('outline');
+  const sideLinks = new Map();
+  let allLink = null;
+  let current = null; // ส่วนที่เปิดอ่านอยู่ (null = ทั้งเล่ม)
+  let outlineKey;
+  let marks = [];
+  let spyFrame = 0;
+
+  const words = (el) => (el ? el.textContent.replace(/\s+/g, ' ').trim() : '');
+  const mark = (a, on) => (on ? a.setAttribute('aria-current', 'true') : a.removeAttribute('aria-current'));
+
+  /** ลิงก์ในแถบข้าง: บรรทัดเล็ก (เช่น "บทที่ 1" หรือเลขข้อ) กับชื่อ */
+  function navLink(href, kicker, name) {
+    const a = document.createElement('a');
+    a.href = href;
+    for (const [cls, text] of [['k', kicker], ['t', name]]) {
+      if (!text) continue;
+      const span = document.createElement('span');
+      span.className = cls;
+      span.textContent = text;
+      a.append(span);
+    }
+    return a;
+  }
+
+  function navList(label, links) {
+    const p = document.createElement('p');
+    p.className = 'side-label';
+    p.textContent = label;
+    const list = document.createElement('ol');
+    for (const a of links) {
+      const li = document.createElement('li');
+      li.append(a);
+      list.append(li);
+    }
+    return [p, list];
+  }
+
+  if (side && order.length > 1) {
+    for (const key of order) {
+      const title = head(key).dataset.title || '';
+      const cut = title.indexOf(' · ');
+      const href = `#${head(key).id}`;
+      sideLinks.set(key, cut < 0 ? navLink(href, '', title) : navLink(href, title.slice(0, cut), title.slice(cut + 3)));
+    }
+    allLink = navLink('#all', '', 'อ่านทั้งเล่ม');
+    allLink.className = 'all';
+    side.append(...navList('ในเล่มนี้', sideLinks.values()), allLink);
+    side.hidden = false;
+  }
+
+  // หัวข้อที่แถบขวาพาไปได้ ใส่ id ไว้ตั้งแต่เปิดหน้า ลิงก์ที่คัดลอกไปเปิดทีหลังจะได้เจอที่เดิม
+  const marksOf = new Map(
+    order.map((key) => {
+      const found = [];
+      for (const part of reader.querySelectorAll(`[data-sec="${key}"]`)) {
+        for (const el of part.querySelectorAll('h2, h3, figure.dg-flow, article.rule')) {
+          // ชื่อบทอยู่บนแถบด้านบนแล้ว
+          if (el.matches('section > h2')) continue;
+          if (!el.id) el.id = `${head(key).id}-${found.length + 1}`;
+          found.push(el);
+        }
+      }
+      return [key, found];
+    }),
+  );
+
+  /** เติมแถบขวาด้วยหัวข้อในส่วน key มีไม่ถึงสองหัวข้อก็ไม่ต้องแสดง */
+  function fillOutline(key) {
+    if (!outline || key === outlineKey) return;
+    outlineKey = key;
+    const found = marksOf.get(key) || [];
+    outline.textContent = '';
+    outline.hidden = found.length < 2;
+    marks = outline.hidden
+      ? []
+      : found.map((el) => {
+          const href = `#${el.id}`;
+          if (el.matches('article.rule')) {
+            const a = navLink(href, words(el.querySelector('.num')), words(el.querySelector('h4')));
+            a.className = 'is-rule';
+            return { el, a };
+          }
+          const a = navLink(href, '', words(el.matches('figure') ? el.querySelector('.dg-title') : el));
+          if (el.matches('.rules-heading')) a.className = 'group';
+          return { el, a };
+        });
+    if (marks.length) {
+      outline.append(...navList(key.startsWith('ch-') ? 'ในบทนี้' : 'ในส่วนนี้', marks.map((m) => m.a)));
+      outline.scrollTop = 0;
+    }
+  }
+
+  /** เลื่อนเฉพาะแถบข้างให้เห็นลิงก์ a (scrollIntoView จะพาแผ่นอ่านเลื่อนตามไปด้วย) */
+  function keepInView(bar, a) {
+    const box = bar.getBoundingClientRect();
+    const at = a.getBoundingClientRect();
+    if (at.top < box.top) bar.scrollTop -= box.top - at.top + 24;
+    else if (at.bottom > box.bottom) bar.scrollTop += at.bottom - box.bottom + 24;
+  }
+
+  /** ไฮไลต์ส่วนและหัวข้อที่อ่านถึง: ตัวสุดท้ายที่ขอบบนเลื่อนผ่านเส้นใกล้ ๆ ขอบบนของแผ่นอ่านไปแล้ว */
+  function spy() {
+    spyFrame = 0;
+    if (!reading) return;
+    const box = sheet.getBoundingClientRect();
+    const line = box.top + Math.min(140, box.height * 0.3);
+    const passed = (el) => el.getBoundingClientRect().top <= line;
+    // เลื่อนจนสุดแล้ว ส่วนท้าย ๆ ที่สั้นจะขึ้นไปไม่ถึงเส้น ให้นับว่าอ่านถึงตัวสุดท้าย
+    const end = sheet.scrollTop > 0 && sheet.scrollTop + sheet.clientHeight >= sheet.scrollHeight - 2;
+    const key = whole ? (end ? order[order.length - 1] : order.filter((k) => passed(head(k))).pop() || order[0]) : current;
+
+    for (const [k, a] of sideLinks) mark(a, k === key);
+    if (allLink) mark(allLink, whole);
+    if (sideLinks.has(key)) keepInView(side, sideLinks.get(key));
+
+    fillOutline(key);
+    let at = -1;
+    marks.forEach((m, i) => {
+      if (passed(m.el)) at = i;
+    });
+    if (end) at = marks.length - 1;
+    marks.forEach((m, i) => mark(m.a, i === at));
+    if (marks[at]) keepInView(outline, marks[at].a);
+  }
+
+  const spySoon = () => {
+    if (!spyFrame) spyFrame = requestAnimationFrame(spy);
+  };
+  sheet.addEventListener('scroll', spySoon, { passive: true });
+  addEventListener('resize', spySoon);
+
   /** เปิดอ่านส่วนที่ชื่อ key (ไม่ระบุ = ทั้งเล่ม) แล้วเลื่อนไปที่ target ถ้ามี */
   function open(key, target) {
     whole = !key;
+    current = key;
     reader.dataset.view = key ? 'one' : 'all';
     reader.classList.toggle('wide', Boolean(key) && head(key).hasAttribute('data-wide'));
     for (const el of reader.querySelectorAll('[data-sec]')) el.classList.toggle('on', el.dataset.sec === key);
@@ -1333,6 +1529,7 @@ function sceneClient() {
     sheet.scrollTop = 0;
     if (target && target !== head(key)) target.scrollIntoView({ block: 'start' });
     reader.focus({ preventScroll: true });
+    spy();
   }
 
   function close() {

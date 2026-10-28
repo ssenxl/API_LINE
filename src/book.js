@@ -690,6 +690,7 @@ ${scene({ chapters, labels: data.labels, facts, shortcuts })}
   <a class="btn" id="next" aria-label="ส่วนถัดไป">›</a>
 </div>
 <div class="sheet" id="sheet">
+<nav class="side" id="side" aria-label="ส่วนต่าง ๆ ในเล่ม" hidden></nav>
 <main>
   <header class="cover" id="cover" data-sec="front" data-title="ปกและสารบัญ">
     ${LOGO_URL ? brandMark() : ''}
@@ -741,6 +742,7 @@ ${scene({ chapters, labels: data.labels, facts, shortcuts })}
       : ''
   }
 </main>
+<nav class="outline" id="outline" aria-label="หัวข้อในส่วนที่อ่านอยู่" hidden></nav>
 </div>
 </div>
 <div class="finder" id="finder" hidden>
