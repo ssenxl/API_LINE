@@ -552,7 +552,7 @@ function mindMap(ctx) {
   nodes.push(svgText(cx, cy + 28, ['for SCM'], 'm1-core-sub', 12.5));
 
   return `<svg id="dg-m1" class="dg-svg m1" viewBox="0 0 ${W} ${H}" style="min-width:900px" role="img"
-    aria-label="แผนผังความคิดของทั้งเล่ม ${chs.length} บท ${leaf.size} ข้อ เส้นโค้งตรงกลางเชื่อมกฎต่างบทที่เกี่ยวข้องกัน">
+    aria-label="Mind Map ของทั้งเล่ม ${chs.length} บท ${leaf.size} ข้อ เส้นโค้งตรงกลางเชื่อมกฎต่างบทที่เกี่ยวข้องกัน">
     <defs>${defs.join('')}</defs><g>${links.join('')}</g><g>${branches.join('')}</g><g>${nodes.join('')}</g></svg>`;
 }
 
@@ -677,12 +677,12 @@ export function mapSection(ctx) {
 
   return `<section class="chapter dg-mapsec" id="map" data-sec="map" data-wide data-title="ภาพรวมทั้งเล่ม">
     <p class="eyebrow">ภาพรวมทั้งเล่ม</p>
-    <h2>แผนผังความรู้</h2>
+    <h2>ความรู้ทั้งเล่มในภาพเดียว</h2>
     <p class="dg-lede">${ctx.chapters.length} บท · ${ruleCount} ข้อ · ${linkNote}</p>
     <figure class="dg dg-map" data-mode="m1">
       <div class="dg-head">
         <p class="dg-title">ดูแบบ</p>
-        ${tabs([['m1', 'แผนผังความคิด'], ['m3', 'วงโคจร']], 'm1')}
+        ${tabs([['m1', 'Mind Map'], ['m3', 'วงโคจร']], 'm1')}
       </div>
       <div class="dg-view" data-view="m1">
         <div class="dg-scroll">${mindMap(ctx)}</div>
