@@ -224,7 +224,7 @@ function assignLanes(nodes) {
   return named.length && lanes.length >= 2 ? lanes : [];
 }
 
-/** กล่องทางแยก: ทำเพิ่มแล้วกลับมา / จบตรงนั้น / กฎยังไม่บอก */
+/** กล่องกรณีพิเศษ (คำตอบอีกแบบของจุดตัดสินใจ): ทำเพิ่มแล้วกลับมา / จบตรงนั้น / กฎยังไม่บอก */
 function sideNode(side, x, y, w, h, perLine, size) {
   const box = { step: 'dg-box dg-side-step', stop: 'dg-box dg-side-stop', unknown: 'dg-gap' }[side.kind];
   const ink = { step: 'dg-t', stop: 'dg-t-muted', unknown: 'dg-t-warn' }[side.kind];
@@ -238,7 +238,7 @@ function sideNode(side, x, y, w, h, perLine, size) {
 
 const F1 = { chip: 34, cx: 214, sx: 430, lx: 524, lw: 176 };
 
-/** แบบ "ทีละขั้น": เลขข้อซ้าย ขั้นตอนตรงกลาง ทางแยกขวา ป้ายเกี่ยวข้องกับบทอื่นขวาสุด */
+/** แบบ "ทีละขั้น": เลขข้อซ้าย ขั้นตอนตรงกลาง กรณีพิเศษขวา ป้ายเกี่ยวข้องกับบทอื่นขวาสุด */
 function flowTopDown(nodes, ctx, topic) {
   const { chip, cx, sx, lx, lw } = F1;
   const hasTies = nodes.some((n) => n.ties.length);
@@ -264,7 +264,7 @@ function flowTopDown(nodes, ctx, topic) {
 
   const back = [`<line class="dg-rule" x1="6" y1="30" x2="${W - 6}" y2="30"/>`];
   const front = [];
-  const heads = [[chip, 'ข้อ'], [cx, 'ขั้นตอน'], hasSide && [sx, 'ทางแยก'], hasTies && [lx + lw / 2, 'เกี่ยวข้องกับบทอื่น']];
+  const heads = [[chip, 'ข้อ'], [cx, 'ขั้นตอน'], hasSide && [sx, 'กรณีพิเศษ'], hasTies && [lx + lw / 2, 'เกี่ยวข้องกับบทอื่น']];
   for (const [x, label] of heads.filter(Boolean)) front.push(svgText(x, 16, [label], 'dg-t-head', 11.5));
 
   rows.forEach((row, i) => {
@@ -331,7 +331,7 @@ function flowLanes(nodes, lanes, ctx, topic) {
     let side = null;
     if (n.side) {
       const Ls = lanes.indexOf(n.side.lane);
-      // ทางแยกที่ฝ่ายเดียวกันทำ วางไว้ชั้นล่างของแถวเดียวกัน ของฝ่ายอื่นวางในแถวของฝ่ายนั้น
+      // กรณีพิเศษที่ฝ่ายเดียวกันทำ วางไว้ชั้นล่างของแถวเดียวกัน ของฝ่ายอื่นวางในแถวของฝ่ายนั้น
       side = { s: n.side, L: Ls, sub: Ls === L ? 1 : 0 };
     }
     return { n, L, side, x: X0 + i * COL };
