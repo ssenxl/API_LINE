@@ -6,6 +6,9 @@ import {
   SCENE_SCRIPT,
   SCENE_STYLE,
   THEME_ATTR,
+  THEME_BOOT,
+  THEME_BUTTON,
+  THEME_SCRIPT,
   THEME_STYLE,
   cover,
   layoutScene,
@@ -591,6 +594,7 @@ function scene({ chapters, labels, facts, shortcuts }) {
           .filter((s) => s.icon && s.icon !== 'howto')
           .map((s) => `<a href="${s.href}">${s.short ?? s.title}</a>`)
           .join('')}
+        ${THEME_BUTTON()}
       </nav>
       <h1>${escape(config.book.title)}</h1>
       <p class="facts">${facts}</p>
@@ -666,6 +670,7 @@ function page(data, chapters) {
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>${escape(config.book.title)}</title>
 <script>document.documentElement.classList.add('js');</script>
+${THEME_BOOT}
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&family=Trirong:wght@500;600;700&display=swap" rel="stylesheet">
@@ -679,6 +684,7 @@ ${scene({ chapters, labels: data.labels, facts, shortcuts })}
 <div class="bar">
   <a class="btn" id="close" href="#" aria-label="ปิดแล้วกลับไปที่ฉาก 3 มิติ">✕</a>
   <p class="where" id="where"></p>
+  ${THEME_BUTTON('btn')}
   <button class="btn" type="button" data-find aria-label="ค้นหาในเล่ม">${SEARCH_ICON}</button>
   <a class="btn" id="prev" aria-label="ส่วนก่อนหน้า">‹</a>
   <a class="btn" id="next" aria-label="ส่วนถัดไป">›</a>
@@ -752,6 +758,7 @@ ${scene({ chapters, labels: data.labels, facts, shortcuts })}
 <script>
   // สั่งพิมพ์ / บันทึกเป็น PDF แล้วให้เนื้อหาที่พับไว้ออกมาครบ
   addEventListener('beforeprint', () => document.querySelectorAll('details').forEach((d) => (d.open = true)));
+  ${THEME_SCRIPT}
   ${SCENE_SCRIPT}
   ${DIAGRAM_SCRIPT}
 </script>

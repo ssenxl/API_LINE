@@ -216,6 +216,7 @@ const DAY = `
   --title-a: #0b1b3a; --title-b: #1d4ed8; --title-c: #6d28d9; --veil: rgba(255, 255, 255, .6);
   --logo: none;
   --thread: 37, 99, 235; --halo: .22; --blend: source-over;
+  --to-light: none; --to-dark: block;
 `;
 
 const NIGHT = `
@@ -233,16 +234,76 @@ const NIGHT = `
   --title-a: #ffffff; --title-b: #7dd8ff; --title-c: #c4b5fd; --veil: rgba(3, 6, 17, .55);
   --logo: brightness(0) invert(1) drop-shadow(0 0 10px rgba(103, 232, 249, .55));
   --thread: 103, 232, 249; --halo: .2; --blend: lighter;
+  --to-light: block; --to-dark: none;
 `;
 
 /**
- * โทนสีที่ล็อกไว้ให้ทุกเครื่องเห็นเหมือนกัน ทั้งหน้าหนังสือและหน้าผู้ดูแล: 'dark' หรือ 'light'
+ * โทนสีเริ่มต้นของทุกเครื่อง ทั้งหน้าหนังสือและหน้าผู้ดูแล: 'dark' หรือ 'light'
  * ถ้าเว้นว่าง ('') สีจะเปลี่ยนตามโหมดมืด/สว่างของแต่ละเครื่อง
+ * ผู้ชมกดปุ่มสลับโทน (THEME_BUTTON) เปลี่ยนเองได้ เบราว์เซอร์จะจำโทนที่เลือกไว้ใช้ครั้งต่อไป
  */
 export const THEME = 'dark';
 
-/** attribute ที่ต้องใส่ใน <html> ของทุกหน้าเพื่อให้โทนสีที่ล็อกไว้มีผล */
+/** attribute ที่ต้องใส่ใน <html> ของทุกหน้าเพื่อให้โทนเริ่มต้นมีผล */
 export const THEME_ATTR = THEME ? ` data-theme="${THEME}"` : '';
+
+/**
+ * วางใน <head> ก่อน <style> ของทุกหน้า: ใช้โทนที่ผู้ชมเคยเลือกไว้ตั้งแต่ก่อนวาดหน้า
+ * ถ้ารอไปทำในสคริปต์ท้ายหน้า จะเห็นโทนเริ่มต้นแวบหนึ่งก่อนเปลี่ยน
+ */
+export const THEME_BOOT = `<script>try { const t = localStorage.getItem('theme');
+  if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; } catch {}</script>`;
+
+/** ปุ่มสลับโทนสว่าง/มืด แสดงรูปดวงอาทิตย์ตอนอยู่โทนมืด และพระจันทร์ตอนอยู่โทนสว่าง */
+export const THEME_BUTTON = (cls = '') => `<button class="theme-toggle${cls && ` ${cls}`}" type="button" data-theme-toggle aria-label="สลับโทนสว่างหรือมืด">
+  <svg class="to-light" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/></svg>
+  <svg class="to-dark" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg>
+</button>`;
+
+/**
+ * ทำให้ปุ่มสลับโทนทำงาน ใช้ได้ทั้งหน้าหนังสือและหน้าผู้ดูแล
+ * สลับแล้วส่งเหตุการณ์ themechange ให้ส่วนที่วาดสีเอง (เส้นด้ายบนผืนผ้าใบ) อ่านสีใหม่
+ * ฟังก์ชันนี้ถูกแปลงเป็นข้อความแล้วฝังลงในหน้าเว็บ จึงห้ามอ้างถึงตัวแปรนอกฟังก์ชัน
+ */
+function themeClient() {
+  const root = document.documentElement;
+  const buttons = document.querySelectorAll('[data-theme-toggle]');
+  const deviceDark = matchMedia('(prefers-color-scheme: dark)');
+  const current = () => root.dataset.theme || (deviceDark.matches ? 'dark' : 'light');
+
+  function label() {
+    const text = current() === 'dark' ? 'เปลี่ยนเป็นโทนสว่าง' : 'เปลี่ยนเป็นโทนมืด';
+    for (const button of buttons) {
+      button.setAttribute('aria-label', text);
+      button.title = text;
+    }
+  }
+
+  function flip() {
+    const next = current() === 'dark' ? 'light' : 'dark';
+    root.dataset.theme = next;
+    try {
+      localStorage.setItem('theme', next);
+    } catch {
+      // เบราว์เซอร์ปิดที่เก็บข้อมูลไว้ ก็แค่จำโทนไม่ได้ หน้านี้ยังสลับได้
+    }
+    label();
+    dispatchEvent(new Event('themechange'));
+  }
+
+  for (const button of buttons) {
+    button.addEventListener('click', () => {
+      // เบราว์เซอร์ที่ทำได้ ให้ค่อย ๆ จางจากโทนเดิมไปโทนใหม่ แทนการเปลี่ยนสีทันที
+      if (document.startViewTransition && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        document.startViewTransition(flip);
+      } else flip();
+    });
+  }
+  deviceDark.addEventListener('change', label);
+  label();
+}
+
+export const THEME_SCRIPT = `(${themeClient})();`;
 
 const sizes = Object.entries(SIZE)
   .map(([kind, { w, h }]) => `.is-${kind} { --w: ${w}px; --h: ${h}px; }`)
@@ -259,10 +320,19 @@ export const THEME_STYLE = `
   :root:not([data-theme="light"]) { ${NIGHT} }
 }
 :root[data-theme="dark"] { ${NIGHT} }
-/* ล็อกโหมดมืดไว้ก็ตาม ตอนพิมพ์ลงกระดาษต้องเป็นตัวหนังสือเข้มบนพื้นขาวเสมอ */
+/* อยู่โทนมืดก็ตาม ตอนพิมพ์ลงกระดาษต้องเป็นตัวหนังสือเข้มบนพื้นขาวเสมอ */
 @media print {
   :root, :root[data-theme="dark"] { ${DAY} }
+  .theme-toggle { display: none; }
 }
+/* ปุ่มสลับโทน: โชว์รูปของโทนที่จะเปลี่ยนไป */
+.theme-toggle { cursor: pointer; }
+.theme-toggle svg {
+  flex: none; width: 18px; height: 18px;
+  fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
+}
+.theme-toggle .to-light { display: var(--to-light); }
+.theme-toggle .to-dark { display: var(--to-dark); }
 
 h1, h2, .wordmark { font-family: 'Trirong', 'Sarabun', serif; font-weight: 600; }
 .eyebrow { letter-spacing: .12em; }
@@ -508,7 +578,14 @@ ${sizes}
   -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
 }
 .find:hover { border-color: var(--shine); color: var(--on-glass); }
-.find span { flex: 1; }
+.hud .theme-toggle {
+  display: flex; align-items: center; padding: 0 10px; border-radius: 999px;
+  color: var(--on-glass); background: var(--glass); border: 1px solid var(--glass-line);
+  -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+}
+.hud .theme-toggle:hover { border-color: var(--shine); color: var(--shine); }
+/* จอแคบช่องค้นหาถูกบีบ ตัดข้อความเป็น … ไม่ให้ล้นไปทับปุ่มข้าง ๆ */
+.find span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .find kbd {
   padding: 0 7px; border-radius: 6px; font: inherit; font-size: .74rem;
   border: 1px solid var(--glass-line); color: var(--on-glass-muted);
@@ -615,8 +692,11 @@ ${sizes}
     .world { top: 58%; }
     .hud .wordmark { font-size: .82rem; letter-spacing: .26em; }
     /* จอแคบ: ชื่อบริษัทกับชื่อเล่มกินเต็มความกว้าง ปุ่มย้ายลงไปอยู่ใต้ตัวเลขสรุป */
-    .top { grid-template-columns: 1fr; }
+    /* minmax(0, ...) ให้แถวปุ่มบีบช่องค้นหาลงได้ ไม่งั้นคอลัมน์จะกว้างเท่าปุ่มทุกปุ่มรวมกันแล้วล้นจอ */
+    .top { grid-template-columns: minmax(0, 1fr); }
     .actions { order: 1; margin-top: 12px; }
+    /* แถวปุ่มเต็มแล้ว ปุ่มสลับโทนขึ้นไปอยู่มุมขวาบนข้างโลโก้แทน */
+    .hud .theme-toggle { position: absolute; top: 0; right: 0; height: 40px; }
     .actions a { padding: 6px 12px; font-size: .82rem; }
     .find { flex: 1; min-width: 0; padding: 6px 10px 6px 12px; font-size: .82rem; }
     /* กล่องค้นหาชิดขอบบน คีย์บอร์ดบนจอจะได้ไม่บังผลค้น */
@@ -1512,6 +1592,7 @@ function sceneClient() {
 
   readTone();
   matchMedia('(prefers-color-scheme: dark)').addEventListener('change', readTone);
+  addEventListener('themechange', readTone);
   addEventListener('resize', fit);
   document.addEventListener('visibilitychange', kick);
   fit();

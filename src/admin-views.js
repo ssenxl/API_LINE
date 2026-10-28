@@ -1,4 +1,4 @@
-import { THEME_ATTR, THEME_STYLE, swatch } from './book-scene.js';
+import { THEME_ATTR, THEME_BOOT, THEME_BUTTON, THEME_SCRIPT, THEME_STYLE, swatch } from './book-scene.js';
 import { BOOK_SECTIONS, STYLE, brandMark, date, escape, retiredBy, retirementNote } from './book.js';
 
 /**
@@ -123,6 +123,7 @@ export function shell({ tab, title, query = {}, body, search = false }) {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
 <title>${escape(title)} · ผู้ดูแล</title>
+${THEME_BOOT}
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&family=Trirong:wght@500;600&display=swap" rel="stylesheet">
@@ -130,7 +131,7 @@ export function shell({ tab, title, query = {}, body, search = false }) {
 </head>
 <body class="admin">
 <div class="sky" aria-hidden="true"><div class="dyes"></div></div>
-<nav class="tabs" aria-label="เมนูผู้ดูแล">${nav}<a href="/" target="_blank" rel="noopener">เปิดหนังสือ ↗</a></nav>
+<nav class="tabs" aria-label="เมนูผู้ดูแล">${nav}<a href="/" target="_blank" rel="noopener">เปิดหนังสือ ↗</a>${THEME_BUTTON()}</nav>
 <main>
   <p class="wordmark">${brandMark()}</p>
   <h1>${escape(title)}</h1>
@@ -138,7 +139,7 @@ export function shell({ tab, title, query = {}, body, search = false }) {
   ${search ? '<input class="search" id="filter" type="search" placeholder="ค้นหา" aria-label="ค้นหา">' : ''}
   ${body}
 </main>
-<script>${SCRIPT}</script>
+<script>${THEME_SCRIPT}${SCRIPT}</script>
 </body>
 </html>`;
 }
@@ -1059,7 +1060,12 @@ const ADMIN_STYLE = `
   flex: none; padding: 4px 12px; border-radius: 999px; text-decoration: none; color: var(--muted);
 }
 .tabs a[aria-current], .filters a[aria-current] { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
-.tabs a:last-child { margin-left: auto; }
+.tabs a:last-of-type { margin-left: auto; }
+.tabs .theme-toggle {
+  flex: none; align-self: center; display: grid; place-items: center; width: 32px; height: 32px; padding: 0;
+  border: 0; border-radius: 50%; color: var(--muted); background: none;
+}
+.tabs .theme-toggle:hover { color: var(--accent); background: var(--accent-soft); }
 .filters { display: flex; flex-wrap: wrap; gap: 4px; margin: 8px 0 12px; }
 .flash { background: var(--ok-soft); color: var(--ok); border-radius: 12px; padding: 12px 16px; margin-bottom: 16px; }
 .flash.bad { background: var(--danger-soft); color: var(--danger); }
