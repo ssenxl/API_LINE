@@ -522,7 +522,30 @@ const ICONS = {
   // วงกลางหนึ่งวงโยงไปวงเล็กสี่มุม แทนแผนผังความรู้
   map:
     'M12 9.5a2.5 2.5 0 1 1 0 5a2.5 2.5 0 1 1 0-5zM5 4.2a1.8 1.8 0 1 1 0 3.6a1.8 1.8 0 1 1 0-3.6zM19 4.2a1.8 1.8 0 1 1 0 3.6a1.8 1.8 0 1 1 0-3.6zM5 16.2a1.8 1.8 0 1 1 0 3.6a1.8 1.8 0 1 1 0-3.6zM19 16.2a1.8 1.8 0 1 1 0 3.6a1.8 1.8 0 1 1 0-3.6zM10.1 10.4L6.4 7.1M13.9 10.4l3.7-3.3M10.1 13.6l-3.7 3.3M13.9 13.6l3.7 3.3',
+  // กล่องกลางแตกกิ่งออกซ้ายขวา แทน Mind Map
+  mindmap:
+    'M10 10h4a1.5 1.5 0 0 1 1.5 1.5v1a1.5 1.5 0 0 1-1.5 1.5h-4a1.5 1.5 0 0 1-1.5-1.5v-1A1.5 1.5 0 0 1 10 10zM8.5 12H6M6 6.5v11M6 6.5H3.5M6 12H3.5M6 17.5H3.5M15.5 12H18M18 6.5v11M18 6.5h2.5M18 12h2.5M18 17.5h2.5',
+  // ดวงกลางกับวงโคจร มีดาวดวงเล็กเกาะอยู่บนวง
+  orbit:
+    'M12 9.5a2.5 2.5 0 1 1 0 5a2.5 2.5 0 1 1 0-5zM19.25 8.62A8 8 0 1 1 15.38 4.75M17.66 4.54a1.8 1.8 0 1 1 0 3.6a1.8 1.8 0 1 1 0-3.6z',
 };
+
+const CHEVRON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10l5 5 5-5"/></svg>';
+
+/** ทางลัดบนแถบหัวฉาก ทางลัดที่มีเมนูย่อยเป็นปุ่ม กดแล้วกางรายการลงมา (สคริปต์อยู่ใน book-scene.js) */
+function hudLink(s) {
+  const label = s.short ?? s.title;
+  if (!s.menu) return `<a href="${s.href}">${label}</a>`;
+  const id = `menu-${s.icon}`;
+  const items = s.menu.map(
+    (m) => `<a href="${m.href}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="${ICONS[m.icon]}"/></svg>
+      <span><strong>${m.title}</strong><small>${m.sub}</small></span></a>`,
+  );
+  return `<div class="menu">
+    <button class="menu-btn" type="button" aria-expanded="false" aria-controls="${id}">${label}${CHEVRON}</button>
+    <div class="menu-list" id="${id}" tabindex="-1" hidden>${items.join('')}</div>
+  </div>`;
+}
 
 /**
  * หน้าแรกที่หมุนดูได้รอบทิศ การ์ดทุกใบคือลิงก์ไปยังส่วนหนึ่งของเล่ม (#ch-1, #rule-12, #toc ...)
@@ -592,7 +615,7 @@ function scene({ chapters, labels, facts, shortcuts }) {
         </button>
         ${shortcuts
           .filter((s) => s.icon && s.icon !== 'howto')
-          .map((s) => `<a href="${s.href}">${s.short ?? s.title}</a>`)
+          .map(hudLink)
           .join('')}
         ${THEME_BUTTON()}
       </nav>
@@ -644,7 +667,18 @@ function page(data, chapters) {
   const hasToc = Boolean(chapters.length || toc);
   const shortcuts = [
     hasToc && { href: '#toc', icon: 'toc', title: 'สารบัญ', sub: `${chapters.length} บท` },
-    showMap && { href: '#map', icon: 'map', title: 'ภาพรวมทั้งเล่ม', sub: 'Mind Map · วงโคจร', short: 'ภาพรวม' },
+    showMap && {
+      href: '#map',
+      icon: 'map',
+      title: 'ภาพรวมทั้งเล่ม',
+      sub: 'Mind Map · วงโคจร',
+      short: 'ภาพรวม',
+      // ปุ่มบนแถบหัวฉากเป็นเมนูย่อย เลือกแล้วเปิดผังแบบนั้นเลย (id ของปุ่มสลับแบบใน book-diagrams.js)
+      menu: [
+        { href: '#map-mindmap', icon: 'mindmap', title: 'Mind Map', sub: 'บทแตกกิ่งรอบหนังสือ' },
+        { href: '#map-orbit', icon: 'orbit', title: 'วงโคจร', sub: 'บทโคจรรอบมาสคอต' },
+      ],
+    },
     show.howto && { href: '#howto', icon: 'howto', title: 'วิธีอ่านเล่มนี้' },
     openConflicts.length && { href: '#open', count: openConflicts.length, title: 'เรื่องที่รอคำตอบ' },
     closedConflicts.length && {

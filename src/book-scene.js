@@ -563,13 +563,44 @@ ${sizes}
 }
 .facts b { margin-right: 3px; font-size: 1.02rem; color: var(--shine); }
 .actions { display: flex; gap: 8px; }
-.actions a, .hint {
+.actions > a, .menu-btn, .hint {
   padding: 7px 16px; border-radius: 999px; font-size: .88rem; white-space: nowrap;
   color: var(--on-glass); text-decoration: none;
   background: var(--glass); border: 1px solid var(--glass-line);
   -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
 }
-.actions a:hover { border-color: var(--shine); }
+.actions > a:hover, .menu-btn:hover, .menu-btn[aria-expanded="true"] { border-color: var(--shine); }
+/* ทางลัดที่มีเมนูย่อย (ภาพรวม → Mind Map / วงโคจร) กดแล้วกางแผ่นแก้วลงมา
+   z-index ให้แผ่นอยู่เหนือชื่อเล่มที่วางต่อจากแถวปุ่ม */
+.menu { position: relative; z-index: 2; display: flex; }
+.menu-btn { display: flex; align-items: center; gap: 4px; padding-right: 11px; font: inherit; font-size: .88rem; cursor: pointer; }
+.menu-btn svg {
+  width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round;
+  transition: transform .2s;
+}
+.menu-btn[aria-expanded="true"] svg { transform: rotate(180deg); }
+.menu-list:not([hidden]) {
+  position: absolute; top: calc(100% + 8px); right: 0; min-width: 240px;
+  display: grid; gap: 2px; padding: 6px; border-radius: 18px; outline: 0; pointer-events: auto;
+  background: var(--glass-dense); border: 1px solid var(--glass-line);
+  -webkit-backdrop-filter: blur(18px) saturate(1.3); backdrop-filter: blur(18px) saturate(1.3);
+  box-shadow: 0 24px 50px -20px var(--glass-shadow), 0 0 40px -18px rgba(var(--thread), .5);
+  animation: menu-in .18s ease-out;
+}
+@keyframes menu-in { from { opacity: 0; transform: translateY(-6px); } }
+.menu-list a {
+  display: flex; align-items: center; gap: 12px; padding: 8px 14px 8px 8px; border-radius: 12px;
+  color: var(--on-glass); text-decoration: none; outline: 0;
+}
+.menu-list a:hover, .menu-list a:focus-visible { background: rgba(var(--thread), .16); }
+.menu-list a:focus-visible { box-shadow: inset 0 0 0 1.5px var(--shine); }
+.menu-list svg {
+  flex: none; width: 36px; height: 36px; padding: 7px; border-radius: 10px;
+  fill: none; stroke: var(--shine); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round;
+  background: rgba(var(--thread), .1); border: 1px solid var(--glass-line);
+}
+.menu-list strong { display: block; font-size: .92rem; font-weight: 600; line-height: 1.3; }
+.menu-list small { display: block; font-size: .78rem; line-height: 1.4; color: var(--on-glass-muted); }
 /* ปุ่มเปิดช่องค้นหา หน้าตาเป็นช่องกรอกข้อความ กดแล้วกล่องค้นหาจริงจะลอยขึ้นมา */
 .find {
   display: flex; align-items: center; gap: 8px; min-width: 210px; padding: 7px 10px 7px 14px;
@@ -682,6 +713,8 @@ ${sizes}
   /* เปิดจากลิงก์ตรงแล้วเบราว์เซอร์เลื่อนไปที่หัวข้อเอง เว้นระยะไว้ไม่ให้ชิดแถบด้านบน */
   .js .sheet [data-sec] { scroll-margin-top: 28px; }
   .js .sheet h2, .js .sheet h3, .js .sheet figure { scroll-margin-top: 24px; }
+  /* ลิงก์ตรงไปที่ผังแบบใดแบบหนึ่งชี้ไปที่ปุ่มสลับแบบ เว้นที่ให้เห็นขอบบนของกรอบผังด้วย */
+  .js .sheet .dg-tabs [id] { scroll-margin-top: 40px; }
   .js .reader[data-view="one"] .chapter { margin-top: 0; padding-top: 0; border-top: 0; }
 
   /* ---------- แถบข้างแผ่นอ่าน (จอกว้าง) ----------
@@ -751,7 +784,12 @@ ${sizes}
     .actions { order: 1; margin-top: 12px; }
     /* แถวปุ่มเต็มแล้ว ปุ่มสลับโทนขึ้นไปอยู่มุมขวาบนข้างโลโก้แทน */
     .hud .theme-toggle { position: absolute; top: 0; right: 0; height: 40px; }
-    .actions a { padding: 6px 12px; font-size: .82rem; }
+    .actions > a, .menu-btn { padding: 6px 12px; font-size: .82rem; }
+    .menu-btn { gap: 2px; padding-right: 7px; }
+    .menu-btn svg { width: 13px; height: 13px; }
+    /* จอแคบแถวปุ่มเป็นแถวล่างสุดของหัวฉาก เมนูย่อยจึงวางเทียบกับหัวฉากทั้งแถบ กางเต็มความกว้าง ไม่ล้นขอบจอ */
+    .menu { position: static; }
+    .menu-list:not([hidden]) { left: 0; min-width: 0; z-index: 2; }
     .find { flex: 1; min-width: 0; padding: 6px 10px 6px 12px; font-size: .82rem; }
     /* กล่องค้นหาชิดขอบบน คีย์บอร์ดบนจอจะได้ไม่บังผลค้น */
     .js .finder:not([hidden]) { padding: 10px; }
@@ -1551,8 +1589,19 @@ function sceneClient() {
     const section = target && target.closest('[data-sec]');
     // ลิงก์ไปหากฎที่ถูกซ่อนจากเล่มจะหาไม่เจอ ปล่อยหน้าที่อ่านอยู่ไว้อย่างเดิม
     if (!section || !reader.contains(section)) return;
+    // ลิงก์ไปที่ปุ่มสลับแบบผัง (เช่น #map-orbit จากเมนูภาพรวม) หรือไปที่ของในผังแบบที่ซ่อนอยู่
+    // สลับผังเป็นแบบนั้นก่อน ไม่งั้นจะเปิดมาเจอผังอีกแบบ
+    const pane = target.closest('.dg-view');
+    const mode = pane ? pane.dataset.view : target.matches('.dg-tabs button') && target.dataset.mode;
+    if (mode) showMode(target.closest('.dg'), mode);
     // กำลังอ่านทั้งเล่มอยู่ก็เลื่อนไปหาเฉย ๆ ไม่ต้องตัดเหลือบทเดียว
     open(whole && reading ? null : section.dataset.sec, target);
+  }
+
+  /** ให้ผังที่สลับได้หลายแบบแสดงแบบ mode (ปุ่มสลับแบบเองอยู่ใน book-diagrams.js) */
+  function showMode(figure, mode) {
+    figure.dataset.mode = mode;
+    for (const b of figure.querySelectorAll('.dg-tabs button')) b.setAttribute('aria-pressed', String(b.dataset.mode === mode));
   }
 
   function go(hash) {
@@ -1567,6 +1616,49 @@ function sceneClient() {
     });
   }
   addEventListener('hashchange', route);
+
+  // ---------- เมนูย่อยบนแถบหัวฉาก (ภาพรวม → Mind Map / วงโคจร) ----------
+
+  for (const menu of scene.querySelectorAll('.menu')) {
+    const button = menu.querySelector('.menu-btn');
+    const list = menu.querySelector('.menu-list');
+    const items = [...list.querySelectorAll('a')];
+    const toggle = (show, focusTo) => {
+      list.hidden = !show;
+      button.setAttribute('aria-expanded', String(show));
+      if (focusTo) focusTo.focus();
+    };
+    button.addEventListener('click', () => toggle(list.hidden));
+    // เลือกแล้วพับเมนู ให้โฟกัสอยู่ที่ปุ่ม ปิดแผ่นอ่านแล้วโฟกัสจะกลับมาที่ปุ่มนี้
+    list.addEventListener('click', (e) => {
+      if (e.target.closest('a')) toggle(false, button);
+    });
+    // กดที่อื่นหรือโฟกัสหลุดออกไปนอกเมนู = พับ
+    document.addEventListener(
+      'pointerdown',
+      (e) => {
+        if (!list.hidden && !menu.contains(e.target)) toggle(false);
+      },
+      true,
+    );
+    menu.addEventListener('focusout', (e) => {
+      if (!menu.contains(e.relatedTarget)) toggle(false);
+    });
+    // Esc พับเมนู ลูกศรขึ้นลงเลือกรายการ (ไม่ให้ลูกศรไปหมุนฉาก)
+    menu.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !list.hidden) {
+        e.stopPropagation();
+        return toggle(false, button);
+      }
+      if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+      e.preventDefault();
+      e.stopPropagation();
+      const at = items.indexOf(document.activeElement);
+      const step = e.key === 'ArrowDown' ? 1 : -1;
+      const next = at < 0 ? (step > 0 ? 0 : items.length - 1) : (at + step + items.length) % items.length;
+      toggle(true, items[next]);
+    });
+  }
 
   // ---------- ค้นหา ----------
 

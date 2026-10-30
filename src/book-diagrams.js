@@ -423,9 +423,13 @@ function flowLanes(nodes, lanes, ctx, topic) {
     aria-label="ผังขั้นตอนของบท ${esc(topic)} แยกแถวตามฝ่ายที่ทำ ${lanes.length} ฝ่าย อ่านจากซ้ายไปขวา">${bg.join('')}${back.join('')}${front.join('')}</svg>`;
 }
 
+/** ปุ่มสลับแบบผัง ปุ่มที่มี id ใช้เป็นลิงก์ตรงไปที่ผังแบบนั้นได้ (#map-orbit) สคริปต์ใน book-scene.js จะสลับแบบให้ */
 const tabs = (items, current) =>
   `<div class="dg-tabs" role="group" aria-label="เลือกแบบผัง">${items
-    .map(([mode, label]) => `<button type="button" data-mode="${mode}" aria-pressed="${mode === current}">${label}</button>`)
+    .map(
+      ([mode, label, id]) =>
+        `<button type="button"${id ? ` id="${id}"` : ''} data-mode="${mode}" aria-pressed="${mode === current}">${label}</button>`,
+    )
     .join('')}</div>`;
 
 /** ผังขั้นตอนของบท วางใต้คำอธิบายบท คืนค่าว่างถ้าบทนี้ไม่ใช่ขั้นตอนการทำงาน */
@@ -682,7 +686,7 @@ export function mapSection(ctx) {
     <figure class="dg dg-map" data-mode="m1">
       <div class="dg-head">
         <p class="dg-title">ดูแบบ</p>
-        ${tabs([['m1', 'Mind Map'], ['m3', 'วงโคจร']], 'm1')}
+        ${tabs([['m1', 'Mind Map', 'map-mindmap'], ['m3', 'วงโคจร', 'map-orbit']], 'm1')}
       </div>
       <div class="dg-view" data-view="m1">
         <div class="dg-scroll">${mindMap(ctx)}</div>
