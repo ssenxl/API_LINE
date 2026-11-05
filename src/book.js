@@ -19,6 +19,7 @@ import {
   CHAPTER_PROMPT_VERSION,
   FLOW_PROMPT_VERSION,
   MAP_PROMPT_VERSION,
+  dropRuleRefs,
   drawFlow,
   mapBook,
   writeChapter,
@@ -444,7 +445,11 @@ function chapterSection(chapter, index, data) {
     ? `${content.overview ? `<div class="overview">${prose(content.overview, data.labels)}</div>` : ''}
        ${flow}
        ${content.sections
-         .map((s) => `${s.heading ? `<h3>${escape(s.heading)}</h3>` : ''}${prose(s.body, data.labels)}`)
+         .map((s) => {
+           // บทที่เรียบเรียงไว้ก่อนแก้ prompt ยังมีเลขข้อติดมาในหัวข้อ ตัดตอนแสดงผลด้วย ไม่ต้องให้ AI เขียนใหม่ทั้งเล่ม
+           const heading = dropRuleRefs(s.heading);
+           return `${heading ? `<h3>${escape(heading)}</h3>` : ''}${prose(s.body, data.labels)}`;
+         })
          .join('')}`
     : `<p class="note">ยังเรียบเรียงบทนี้ไม่สำเร็จ ลองเปิดหน้านี้ใหม่อีกครั้ง ระหว่างนี้อ่านจากรายการกฎด้านล่างได้</p>${flow}`;
 
