@@ -459,7 +459,10 @@ export function flowFigure(chapter, index, ctx) {
 
 // ---------- แผนผังความคิด ----------
 
-/** หนังสืออยู่กลาง บทแตกกิ่งออกซ้ายขวาวนตามเข็มนาฬิกา กฎแต่ละข้อเป็นใบ เส้นโค้งจาง ๆ เชื่อมกฎต่างบทที่เกี่ยวกัน */
+/**
+ * หนังสืออยู่กลาง บทแตกกิ่งออกซ้ายขวาวนตามเข็มนาฬิกา กฎแต่ละข้อเป็นใบ
+ * เส้นเชื่อมกฎต่างบทซ่อนไว้ จะขึ้นเมื่อกดข้อหรือบท และวิ่งไปตามกิ่งเดิมผ่านวงกลาง ไม่ลากตัดกล่องบท
+ */
 function mindMap(ctx) {
   const W = 1320;
   const cx = 660;
@@ -502,33 +505,48 @@ function mindMap(ctx) {
   place(right, 1);
   place(left, -1);
 
+  // กิ่งจากวงกลางไปกล่องบท และกิ่งย่อยจากกล่องบทไปแต่ละข้อ เป็นเส้นโค้ง 4 จุด
+  // ใช้ทั้งวาดกิ่งและวาดเส้นเชื่อม เส้นเชื่อมจึงทับกิ่งเดิมพอดี ไม่ตัดผ่านกล่องหรือข้อความ
+  const trunkOf = (c) => [[cx + c.side * 78, cy], [cx + c.side * 130, cy], [c.x - c.side * (PW / 2 + 50), c.y], [c.x - (c.side * PW) / 2, c.y]];
+  const twigOf = (c, p) => {
+    const outer = c.x + (c.side * PW) / 2;
+    return [[outer, c.y], [outer + c.side * 18, c.y], [p.x - c.side * 18, p.y], [p.x, p.y]];
+  };
+  const pt = ([x, y]) => `${num(x)} ${num(y)}`;
+  const forth = ([, b, c, d]) => `C${pt(b)}, ${pt(c)}, ${pt(d)}`;
+  const back = ([a, b, c]) => `C${pt(c)}, ${pt(b)}, ${pt(a)}`;
+  const home = new Map(chs.flatMap((c) => c.rules.map((r) => [r.id, c])));
+
   const defs = [];
   const links = [];
   ctx.links.forEach((l, n) => {
     const A = leaf.get(l.a);
     const B = leaf.get(l.b);
-    const pull = 0.62;
-    const c1 = { x: A.x + (cx - A.x) * pull, y: A.y + (cy - A.y) * pull };
-    const c2 = { x: B.x + (cx - B.x) * pull, y: B.y + (cy - B.y) * pull };
+    const ca = home.get(l.a);
+    const cb = home.get(l.b);
+    const [twA, trA, trB, twB] = [twigOf(ca, A), trunkOf(ca), trunkOf(cb), twigOf(cb, B)];
+    // ใบ A → กล่องบท A → วงกลาง → กล่องบท B → ใบ B ช่วงที่ลอดใต้กล่องและวงกลางเป็นเส้นตรงที่ถูกบังไว้
+    const d = `M${pt(twA[3])} ${back(twA)} L${pt(trA[3])} ${back(trA)}`
+      + ` L${pt([cx + ca.side * 50, cy])} L${pt([cx + cb.side * 50, cy])} L${pt(trB[0])} ${forth(trB)}`
+      + ` L${pt(twB[0])} ${forth(twB)}`;
     defs.push(`<linearGradient id="m1-l${n}" gradientUnits="userSpaceOnUse" x1="${num(A.x)}" y1="${num(A.y)}" x2="${num(B.x)}" y2="${num(B.y)}">`
       + `<stop offset="0" stop-color="${tint(ctx.chapterOf.get(l.a))}"/><stop offset="1" stop-color="${tint(ctx.chapterOf.get(l.b))}"/></linearGradient>`);
-    links.push(`<path class="m1-link" data-a="${l.a}" data-b="${l.b}" stroke="url(#m1-l${n})" d="M${num(A.x)} ${num(A.y)} C${num(c1.x)} ${num(c1.y)}, ${num(c2.x)} ${num(c2.y)}, ${num(B.x)} ${num(B.y)}"/>`);
+    links.push(`<g class="m1-link" data-a="${l.a}" data-b="${l.b}"><path class="m1-thread" stroke="url(#m1-l${n})" d="${d}"/><path class="m1-flow" d="${d}"/></g>`);
   });
 
   const branches = [];
   const nodes = [];
   for (const c of chs) {
     const [light, deep, accent] = dye(c.i);
-    const inner = c.x - (c.side * PW) / 2;
-    const outer = c.x + (c.side * PW) / 2;
     const pillH = c.name.length > 1 ? 62 : 48;
     defs.push(`<linearGradient id="m1-c${c.i}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${light}"/><stop offset=".7" stop-color="${deep}"/><stop offset="1" stop-color="${accent}"/></linearGradient>`);
     const twigs = c.rules.map((r) => {
-      const p = leaf.get(r.id);
-      return `<path class="m1-twig" d="M${num(outer)} ${num(c.y)} C${num(outer + c.side * 18)} ${num(c.y)}, ${num(p.x - c.side * 18)} ${num(p.y)}, ${num(p.x)} ${num(p.y)}"/>`;
+      const tw = twigOf(c, leaf.get(r.id));
+      return `<path class="m1-twig" d="M${pt(tw[0])} ${forth(tw)}"/>`;
     });
+    const trunk = trunkOf(c);
     branches.push(`<g class="m1-br" data-ch="${c.i}" style="--c:${light}">`
-      + `<path class="m1-trunk" d="M${cx + c.side * 78} ${num(cy)} C${cx + c.side * 130} ${num(cy)}, ${num(inner - c.side * 50)} ${num(c.y)}, ${num(inner)} ${num(c.y)}"/>`
+      + `<path class="m1-trunk" d="M${pt(trunk[0])} ${forth(trunk)}"/>`
       + `${twigs.join('')}</g>`);
     nodes.push(`<g class="m1-chap" data-ch="${c.i}" tabindex="0" role="button" aria-label="บทที่ ${c.i + 1} ${esc(c.topic)}">`
       + `<title>บทที่ ${c.i + 1} · ${esc(c.topic)}</title>`
@@ -542,9 +560,12 @@ function mindMap(ctx) {
       // ระยะห่างระหว่างชื่อกับเลขข้อใส่ไว้ที่ dx ของชิ้นที่สอง (ใส่ในชิ้นว่างเบราว์เซอร์จะไม่สนใจ)
       const number = (gap) => `<tspan class="m1-no"${gap ? ' dx="6"' : ''}>${esc(ctx.labels.get(r.id))}</tspan>`;
       const name = (gap) => `<tspan${gap ? ' dx="6"' : ''}>${esc(clip(ctx.short(r.id), 24))}</tspan>`;
+      // ข้อที่มีกฎต่างบทเกี่ยวข้อง มีวงล้อมจุดไว้ให้รู้ว่ากดแล้วจะมีเส้นเชื่อม
+      const tied = ctx.near(r.id).length > 0;
       nodes.push(`<g class="m1-leaf" data-id="${r.id}" tabindex="0" role="button" style="--c:${light}">`
         + `<title>ข้อ ${esc(ctx.labels.get(r.id))} ${esc(r.title)}</title>`
         + `<rect class="m1-hit" x="${num(s > 0 ? p.x - 6 : p.x - 236)}" y="${num(p.y - 11)}" width="242" height="22"/>`
+        + (tied ? `<circle class="m1-tie" cx="${num(p.x)}" cy="${num(p.y)}" r="6.8"/>` : '')
         + `<circle class="m1-dot" cx="${num(p.x)}" cy="${num(p.y)}" r="3.6"/>`
         + `<text class="dg-t" x="${num(p.x + s * 9)}" y="${num(p.y)}" font-size="12.5" text-anchor="${s > 0 ? 'start' : 'end'}" dominant-baseline="central">`
         + `${s > 0 ? name(false) + number(true) : number(false) + name(true)}</text></g>`);
@@ -556,8 +577,8 @@ function mindMap(ctx) {
   nodes.push(svgText(cx, cy + 28, ['for SCM'], 'm1-core-sub', 12.5));
 
   return `<svg id="dg-m1" class="dg-svg m1" viewBox="0 0 ${W} ${H}" style="min-width:900px" role="img"
-    aria-label="Mind Map ของทั้งเล่ม ${chs.length} บท ${leaf.size} ข้อ เส้นโค้งตรงกลางเชื่อมกฎต่างบทที่เกี่ยวข้องกัน">
-    <defs>${defs.join('')}</defs><g>${links.join('')}</g><g>${branches.join('')}</g><g>${nodes.join('')}</g></svg>`;
+    aria-label="Mind Map ของทั้งเล่ม ${chs.length} บท ${leaf.size} ข้อ กดข้อหรือบทเพื่อดูเส้นเชื่อมกับกฎต่างบทที่เกี่ยวข้อง">
+    <defs>${defs.join('')}</defs><g>${branches.join('')}</g><g>${links.join('')}</g><g>${nodes.join('')}</g></svg>`;
 }
 
 // ---------- วงโคจร ----------
@@ -676,7 +697,7 @@ export function mapSection(ctx) {
       ? `กฎต่างบทที่เกี่ยวข้องกัน ${ctx.links.length} คู่`
       : 'ยังไม่พบกฎต่างบทที่เกี่ยวข้องกัน';
   const hint = ctx.links.length
-    ? 'กดชื่อข้อหรือชื่อบท เพื่อดูว่าเกี่ยวข้องกับอะไรในบทอื่น'
+    ? 'กดชื่อข้อหรือชื่อบท เพื่อดูเส้นเชื่อมกับกฎในบทอื่น · ข้อที่มีวงล้อมจุดคือข้อที่มีกฎต่างบทเกี่ยวข้อง'
     : 'กดชื่อข้อหรือชื่อบท เพื่อดูรายละเอียดและเปิดอ่าน';
 
   return `<section class="chapter dg-mapsec" id="map" data-sec="map" data-wide data-title="ภาพรวมทั้งเล่ม">
@@ -790,9 +811,15 @@ export const DIAGRAM_STYLE = `
 .dg-lane-head.strip { fill: color-mix(in srgb, var(--title-c) 14%, var(--paper)); }
 
 /* แผนผังความคิด */
-.m1-link { fill: none; stroke-width: 1.3; opacity: .4; transition: opacity .2s, stroke-width .2s; }
-.m1.focus .m1-link { opacity: .06; }
-.m1.focus .m1-link.hot { opacity: 1; stroke-width: 2.6; }
+.m1-link { opacity: 0; pointer-events: none; transition: opacity .25s; }
+.m1-link path { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.m1-thread { stroke-width: 3; }
+.m1-flow { stroke: #fff; stroke-width: 2; stroke-dasharray: 1.5 16; opacity: .85; }
+.m1.focus .m1-link.hot { opacity: 1; }
+.m1.focus .m1-link.hot .m1-flow { animation: m1-flow 1s linear infinite; }
+.m1.focus .m1-link.hot.rev .m1-flow { animation-direction: reverse; }
+@keyframes m1-flow { to { stroke-dashoffset: -17.5; } }
+.m1-tie { fill: none; stroke: var(--c); stroke-width: 1.3; opacity: .7; }
 .m1-trunk { fill: none; stroke: var(--c); stroke-width: 4.5; stroke-linecap: round; opacity: .85; }
 .m1-twig { fill: none; stroke: var(--c); stroke-width: 1.5; opacity: .55; }
 .m1-br, .m1-chap, .m1-leaf { transition: opacity .2s; }
@@ -871,6 +898,7 @@ export const DIAGRAM_STYLE = `
 }
 @media (prefers-reduced-motion: reduce) {
   .m1-link, .m1-br, .m1-chap, .m1-leaf, .m3-line, .m3-planet { transition: none; }
+  .m1-flow { display: none; }
 }
 @media print {
   .dg-tabs, .dg-info, .dg-view[data-view="f2"], .dg-view[data-view="m3"], #dg-data { display: none !important; }
@@ -937,7 +965,11 @@ function diagramClient() {
       const ids = !pick ? [] : pick.rule ? [pick.rule] : Object.keys(rules).filter((id) => chapterOf(id) === pick.chapter);
       const lit = linked(ids);
       const chs = new Set([...lit].map(chapterOf));
-      for (const p of m1.querySelectorAll('.m1-link')) p.classList.toggle('hot', ids.includes(p.dataset.a) || ids.includes(p.dataset.b));
+      for (const g of m1.querySelectorAll('.m1-link')) {
+        g.classList.toggle('hot', ids.includes(g.dataset.a) || ids.includes(g.dataset.b));
+        // ประกายบนเส้นวิ่งออกจากข้อหรือบทที่เลือกเสมอ
+        g.classList.toggle('rev', !ids.includes(g.dataset.a));
+      }
       for (const g of m1.querySelectorAll('.m1-leaf')) {
         g.classList.toggle('hot', lit.has(g.dataset.id));
         g.classList.toggle('sel', ids.includes(g.dataset.id));
