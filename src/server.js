@@ -95,7 +95,7 @@ app.use('/static', express.static(STATIC_DIR, { immutable: true, maxAge: '365d',
 // หน้าแรกเปิดหนังสือสรุปเลย ใครรู้โดเมนก็อ่านได้โดยไม่ต้องมี key
 app.get('/', (_req, res) => sendBook(res));
 
-// ลิงก์สั้นไว้ส่งต่อ เช่น /scm-book ชื่อ path นี้ทำหน้าที่เป็นรหัสผ่านไปในตัว
+// ลิงก์สั้นไว้ส่งต่อ (/<BOOK_SLUG>) ชื่อ path นี้ทำหน้าที่เป็นรหัสผ่านไปในตัว อย่าเขียนค่าจริงลงในโค้ดหรือเอกสาร
 // ใครรู้ชื่อก็เปิดได้ ถ้าหลุดไปถึงคนที่ไม่ควรเห็น ให้เปลี่ยน BOOK_SLUG
 if (config.book.slug) {
   app.get(`/${config.book.slug}`, (_req, res) => sendBook(res));

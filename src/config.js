@@ -67,7 +67,7 @@ export const config = {
     brand: process.env.BOOK_BRAND || 'Nan Yang Textile Group',
     // ถ้าตั้งไว้ ต้องเปิด /book?key=ค่านี้ ถึงจะอ่านได้ กันคนนอกที่เดา URL ได้
     key: process.env.BOOK_KEY || '',
-    // ลิงก์สั้นสำหรับส่งต่อ เช่น scm-book → /scm-book เปิดได้โดยไม่ต้องมี key
+    // ลิงก์สั้นสำหรับส่งต่อ ตั้งเป็น <ชื่อ> แล้วเปิด /<ชื่อ> ได้โดยไม่ต้องมี key
     slug: (process.env.BOOK_SLUG || '').replace(/^\/+|\/+$/g, ''),
   },
 

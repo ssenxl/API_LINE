@@ -35,7 +35,7 @@ services:
       # รหัสสำหรับเปิดหน้าหนังสือ /book?key=...
       - key: BOOK_KEY
         sync: false
-      # ลิงก์สั้นไว้ส่งต่อ เช่น scm-book → https://line-ai-bridge.onrender.com/scm-book
+      # ลิงก์สั้นไว้ส่งต่อ ตั้งเป็น <ชื่อ> แล้วเปิด https://line-ai-bridge.onrender.com/<ชื่อ> ได้ ชื่อนี้คือรหัส ห้ามเขียนลงไฟล์นี้
       - key: BOOK_SLUG
         sync: false
       # รหัสเข้าหน้าผู้ดูแล /admin (แก้ เลิกใช้ กู้คืนกฎ) ไม่ตั้ง = ปิดหน้านี้
