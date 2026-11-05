@@ -118,21 +118,41 @@ async function buildChapters(data) {
   }
   const topics = [...byTopic.keys()].sort((a, b) => a.localeCompare(b, 'th'));
 
-  // ส่วนที่ผู้ดูแลปิดไว้ไม่ต้องเสียค่า AI เตรียม ป้ายเกี่ยวข้องกับบทอื่นในผังขั้นตอนก็ใช้แผนผังทั้งเล่มด้วย
-  const [contents, flows, map] = await Promise.all([
-    mapLimit(topics, CHAPTER_CONCURRENCY, (topic) => chapterContent(topic, byTopic.get(topic), data.chapters.get(topic))),
-    show.flow
-      ? mapLimit(topics, CHAPTER_CONCURRENCY, (topic) => chapterFlow(topic, byTopic.get(topic), data.diagrams.get(`flow:${topic}`)))
-      : [],
+  // แผนผังทั้งเล่มที่ผู้ดูแลปิดไว้ไม่ต้องเสียค่า AI เตรียม ป้ายเกี่ยวข้องกับบทอื่นในผังขั้นตอนก็ใช้แผนผังนี้ด้วย
+  const [chapters, map] = await Promise.all([
+    mapLimit(topics, CHAPTER_CONCURRENCY, (topic) => buildChapter(topic, byTopic.get(topic), data)),
     (show.map || show.flow) && everyActive.length ? bookMap(everyActive, data.diagrams.get('map')) : null,
   ]);
   data.map = map;
-  return topics.map((topic, i) => ({
-    topic,
-    rules: byTopic.get(topic),
-    content: contents[i],
-    flow: flows[i] ?? null,
-  }));
+  return chapters;
+}
+
+/**
+ * วาดผังขั้นตอนก่อน แล้วเรียงกฎตามผัง เนื้อหาบทที่ AI เรียบเรียงจะเล่าไล่ตามผังไปด้วย
+ *
+ * ผังวาดเสมอแม้ผู้ดูแลปิดการแสดงไว้ เพราะเลขข้อในบทเรียงตามผัง
+ * ปิดเปิดผังแล้วเลขข้อจะได้ไม่ขยับ และไม่ต้องเสียค่า AI เขียนบทใหม่
+ */
+async function buildChapter(topic, rules, data) {
+  // ผังวาดจากกฎตามลำดับเดิม (เลข id) ถ้าส่งลำดับที่เรียงตามผังเข้าไป ผังจะถูกวาดใหม่ทุกครั้งที่ลำดับขยับ
+  const flow = await chapterFlow(topic, rules, data.diagrams.get(`flow:${topic}`));
+  const ordered = inFlowOrder(rules, flow);
+  const content = await chapterContent(topic, ordered, flow, data.chapters.get(topic));
+  return { topic, rules: ordered, content, flow };
+}
+
+/**
+ * เรียงกฎตามลำดับที่โผล่ในผังขั้นตอน เลขข้อ 1.1 1.2 ... จะได้ไล่ลงมาตามผัง
+ * ข้อที่อยู่หลายขั้นนับที่ขั้นแรกที่เจอ ข้อที่ไม่อยู่ในผังต่อท้ายตามลำดับเดิม
+ */
+function inFlowOrder(rules, flow) {
+  if (!flow?.flow) return rules;
+  const rank = new Map();
+  for (const step of flow.steps) {
+    for (const id of step.rules ?? []) if (!rank.has(id)) rank.set(id, rank.size);
+  }
+  const at = (rule) => rank.get(rule.id) ?? Number.MAX_SAFE_INTEGER;
+  return [...rules].sort((a, b) => at(a) - at(b));
 }
 
 /** งานที่ AI กำลังทำอยู่ คนที่เปิดหนังสือระหว่างนั้นรอผลชุดเดียวกัน ไม่สั่ง AI ทำซ้ำ */
@@ -164,12 +184,13 @@ function cachedByAI({ key, source, cached, make, save, what }) {
 }
 
 // เขียนบทไม่สำเร็จก็ยังแสดงรายการกฎได้ ไม่ต้องให้ทั้งหน้าพัง
-const chapterContent = (topic, rules, cached) =>
+// ผังถูกวาดใหม่เมื่อไหร่ บทก็เขียนใหม่ตาม เนื้อหาจะได้เล่าตามลำดับเดียวกับผังที่เห็น
+const chapterContent = (topic, rules, flow, cached) =>
   cachedByAI({
     key: `chapter:${topic}`,
-    source: [CHAPTER_PROMPT_VERSION, rules.map((r) => [r.id, r.title, r.summary])],
+    source: [CHAPTER_PROMPT_VERSION, rules.map((r) => [r.id, r.title, r.summary]), flow?.flow ? flow : null],
     cached,
-    make: () => writeChapter(topic, rules),
+    make: () => writeChapter(topic, rules, flow),
     save: (hash, content) => kb.saveChapter(topic, hash, content),
     what: `เรียบเรียงบท "${topic}"`,
   });
@@ -279,7 +300,7 @@ export const brandMark = () =>
     : escape(config.book.brand);
 
 /**
- * เลขข้อในเล่ม เช่น 1.2 คือบทที่ 1 ข้อที่ 2
+ * เลขข้อในเล่ม เช่น 1.2 คือบทที่ 1 ข้อที่ 2 บทที่มีผังขั้นตอน ข้อเรียงตามลำดับในผัง (ดู inFlowOrder)
  * กฎที่ไม่ได้อยู่ในบทไหน (เลิกใช้แล้ว หรือถูกซ่อน) ใช้เลข #id เดิมที่บอทใช้อ้างใน LINE
  */
 function chapterLabels(chapters) {
@@ -815,8 +836,8 @@ const HOWTO = `<aside class="howto" id="howto" data-sec="front">
       <li>แต่ละบทเริ่มด้วยคำอธิบายที่ AI เรียบเรียงจากกฎทั้งหมดในบทนั้น ให้อ่านเข้าใจภาพรวมก่อน</li>
       <li>บทที่เป็นขั้นตอนการทำงานจะมีผังขั้นตอนอยู่ใต้คำอธิบาย สลับดูแบบ "ทีละขั้น" หรือ "แยกตามฝ่าย" ได้ กดเลขข้อในผังเพื่อดูกฎ กดป้ายลูกศรเพื่อไปกฎที่เกี่ยวข้องในบทอื่น</li>
       <li>หน้า "ภาพรวมทั้งเล่ม" มี Mind Map กับวงโคจร ให้เห็นว่าบทไหนเกี่ยวกับบทไหน ชื่อสั้นและเส้นเชื่อมพวกนี้ AI สรุปให้ ให้ยึดตัวกฎเป็นหลัก</li>
-      <li>ท้ายบทคือรายการกฎทีละข้อ เลขอย่าง <span class="ref">1.2</span> คือบทที่ 1 ข้อที่ 2 กดเพื่อไปดูข้อนั้นได้</li>
-      <li>เลขเล็ก ๆ มุมขวาของกฎ เช่น #12 คือเลขที่บอทใช้อ้างใน LINE เลขนี้ไม่เปลี่ยน ส่วนเลขบทอาจขยับเมื่อมีบทใหม่</li>
+      <li>ท้ายบทคือรายการกฎทีละข้อ เลขอย่าง <span class="ref">1.2</span> คือบทที่ 1 ข้อที่ 2 กดเพื่อไปดูข้อนั้นได้ บทที่มีผังขั้นตอน ข้อจะเรียงตามลำดับในผัง</li>
+      <li>เลขเล็ก ๆ มุมขวาของกฎ เช่น #12 คือเลขที่บอทใช้อ้างใน LINE เลขนี้ไม่เปลี่ยน ส่วนเลขในเล่มอาจขยับเมื่อมีบทหรือกฎใหม่</li>
       <li>กด "คำพูดต้นฉบับ" เพื่ออ่านสิ่งที่ผู้สอนพิมพ์มาจริง ๆ ถ้าคำสรุปของ AI กับต้นฉบับไม่ตรงกัน ให้ถือต้นฉบับเป็นหลัก</li>
       <li>กล่องสีเหลืองท้ายบทคือช่องโหว่ที่บอทถามผู้สอนใน LINE ไปแล้วและยังไม่ได้คำตอบ ใครรู้คำตอบช่วยตอบในแชทได้เลย</li>
       <li>เรื่องที่เคยขัดแย้งกันและเหตุผลที่ตัดสิน อยู่ในภาคผนวกท้ายเล่ม</li>

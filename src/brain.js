@@ -287,7 +287,7 @@ export async function findGaps({ topic, rules, newRules, asked }) {
 // ---------- 4. เรียบเรียงบทในหนังสือ ----------
 
 // เปลี่ยนเลขนี้เมื่อแก้ CHAPTER_PROMPT เพื่อให้ทุกบทถูกเขียนใหม่ด้วยคำสั่งใหม่
-export const CHAPTER_PROMPT_VERSION = 4;
+export const CHAPTER_PROMPT_VERSION = 5;
 
 const CHAPTER_PROMPT = `คุณกำลังเขียนบทหนึ่งในหนังสือความรู้ของทีม ให้คนที่เพิ่งเข้ามาใหม่อ่านแล้วเข้าใจและทำงานต่อได้ทันที
 
@@ -295,11 +295,13 @@ const CHAPTER_PROMPT = `คุณกำลังเขียนบทหนึ�
 
 ## กฎทั้งหมดในบทนี้
 {RULES}
-
+{FLOW}
 เขียนเป็นภาษาไทยที่อ่านง่าย เหมือนรุ่นพี่อธิบายให้รุ่นน้องฟัง
 - ความยาวต้องพอดีกับเนื้อหา กฎข้อเดียวเขียนสั้น ๆ ก็พอ ห้ามพูดเรื่องเดิมซ้ำหลายรอบ ห้ามทำหัวข้อ "สรุป" ที่ทวนสิ่งที่เพิ่งพูดไป
 - overview: บทนี้เกี่ยวกับอะไร ใช้ตอนไหน 1-3 ประโยค
 - sections: เรียงตามลำดับที่คนทำงานจะเจอจริง รวมเรื่องที่เกี่ยวกันไว้ด้วยกัน ถ้ามีกฎน้อย ใช้ section เดียวก็ได้
+  - ถ้ามีผังขั้นตอนด้านบน ให้เล่าไล่ตามขั้นในผังจากขั้นแรกไปขั้นสุดท้าย ห้ามสลับลำดับ คนอ่านจะได้อ่านไปพร้อมกับดูผัง
+    จุดที่ต้องเลือกให้เล่าทั้งสองทางตรงขั้นนั้นเลย กฎที่ไม่อยู่ในผังให้เล่าตรงขั้นที่เกี่ยวข้อง หรือต่อท้ายถ้าไม่เกี่ยวกับขั้นไหน
   - heading เป็นชื่อหัวข้อสั้น ๆ ห้ามใส่เลขข้อ
   - body แบ่งย่อหน้าด้วยบรรทัดว่าง รายการต้องขึ้นบรรทัดใหม่ทีละข้อ นำหน้าด้วย "- "
   - ใน body ทุกครั้งที่พูดถึงกฎ ให้อ้างเลขข้อในวงเล็บ เช่น (ข้อ #12)
@@ -310,8 +312,32 @@ const CHAPTER_PROMPT = `คุณกำลังเขียนบทหนึ�
 ตอบเป็น JSON เท่านั้น ในรูปแบบนี้
 {"overview":"","sections":[{"heading":"","body":""}]}`;
 
-export async function writeChapter(topic, rules) {
-  const system = fill(CHAPTER_PROMPT, { TOPIC: topic, RULES: formatRules(rules) });
+/**
+ * ผังขั้นตอนเป็นข้อความทีละบรรทัด ให้ AI เล่าเนื้อหาบทตามลำดับเดียวกับผังที่คนอ่านเห็น
+ * ทางแยกที่ยังไม่มีกฎไม่ต้องใส่ เนื้อหาบทไม่เขียนถึงสิ่งที่กฎยังไม่ครอบคลุมอยู่แล้ว
+ */
+function formatFlow(flow) {
+  if (!flow?.flow) return '';
+  const refs = (ids) => (ids?.length ? ` (ข้อ ${ids.map((id) => `#${id}`).join(' ')})` : '');
+  const who = (name) => (name ? ` [${name}]` : '');
+  const lines = flow.steps.map((s, i) => {
+    let line = `${i + 1}. ${s.text}${who(s.who)}${refs(s.rules)}`;
+    if (s.type === 'decision') {
+      const other = s.continue === 'ใช่' ? 'ไม่' : 'ใช่';
+      line += ` → ถ้า${s.continue} ไปขั้นถัดไป`;
+      if (s.other.kind === 'step') line += ` / ถ้า${other}: ${s.other.text}${who(s.other.who)} แล้วกลับมาทำขั้นถัดไป`;
+      if (s.other.kind === 'stop') line += ` / ถ้า${other}: ${s.other.text || 'จบ'}${who(s.other.who)} ไม่ไปต่อ`;
+    }
+    return line;
+  });
+  if (flow.start) lines.unshift(`เริ่มเมื่อ: ${flow.start}`);
+  if (flow.end) lines.push(`จบที่: ${flow.end}`);
+  return `\n## ผังขั้นตอนของบทนี้ (คนอ่านเห็นผังนี้อยู่เหนือเนื้อหา กฎด้านบนเรียงตามลำดับในผังแล้ว)\n${lines.join('\n')}\n`;
+}
+
+/** flow คือผลจาก drawFlow() ของบทเดียวกัน (หรือ null) ถ้ามี เนื้อหาบทจะเล่าตามลำดับในผัง */
+export async function writeChapter(topic, rules, flow = null) {
+  const system = fill(CHAPTER_PROMPT, { TOPIC: topic, RULES: formatRules(rules), FLOW: formatFlow(flow) });
   const raw = await askJSON(system, [{ role: 'user', content: `เขียนบท "${topic}"` }]);
 
   return {
