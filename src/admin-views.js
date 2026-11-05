@@ -669,7 +669,7 @@ function activityChart(buckets, series, weekly) {
       .join('');
     return `<a class="col" href="#day-${d.days[0].key}" data-tip="${escape([when, ...lines].join('\n'))}"
         aria-label="${escape(`${when}: ${lines.join(', ')}`)}">
-      <span class="stack" style="height:${pct(d.total, top)}">${bars}</span>${label}</a>`;
+      <span class="pile" style="height:${pct(d.total, top)}">${bars}</span>${label}</a>`;
   });
 
   return `<div class="chart" style="--n:${n}">
@@ -713,7 +713,7 @@ function monthlyChart(months, days, color) {
     const tip = [name, d.count ? `เข้ามาสอน ${d.count} วัน` : 'ไม่มีการสอน', who].filter(Boolean).join('\n');
     return `<span class="col" tabindex="0" data-tip="${escape(tip)}" aria-label="${escape(tip.replace(/\n/g, ', '))}">
       <span class="cap">${d.count}</span>
-      ${d.count ? `<span class="stack" style="height:${pct(d.count, top)};background:${color}"></span>` : ''}
+      ${d.count ? `<span class="pile" style="height:${pct(d.count, top)};background:${color}"></span>` : ''}
       ${xLabel(dayName(`${d.month}-01`, { month: 'short', year: '2-digit' }), i, data.length, data.length > 6 ? data.length - 1 - i : 0)}
     </span>`;
   });
@@ -1166,11 +1166,12 @@ a.col:hover, a.col:focus-visible, .monthly .col:hover, .monthly .col:focus-visib
   background: color-mix(in oklab, var(--ink) 8%, transparent); outline: none;
 }
 /* แท่งกว้างไม่เกิน 24px หัวมน 4px โคนเหลี่ยม ช่องว่าง 2px คั่นระหว่างแท่งและระหว่างสีที่ซ้อนกัน */
-.stack {
+/* ชื่อ .pile ไม่ใช่ .stack เพราะ .stack เป็นฟอร์มเรียงแนวตั้งอยู่แล้ว ใช้ชื่อซ้ำจะทับกันจนฟอร์มเหลือกว้าง 24px */
+.pile {
   display: flex; flex-direction: column-reverse; gap: 2px; flex-shrink: 0;
   width: min(24px, calc(100% - 2px)); min-height: 3px; border-radius: 4px 4px 0 0; overflow: hidden;
 }
-.stack i { flex: 1 1 0; min-height: 0; }
+.pile i { flex: 1 1 0; min-height: 0; }
 .col .x { position: absolute; top: calc(100% + 8px); left: 50%; transform: translateX(-50%); white-space: nowrap; font-size: .75rem; color: var(--muted); }
 .col .x.start { left: 0; transform: none; }
 .col .x.end { left: auto; right: 0; transform: none; }
