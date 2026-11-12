@@ -1,5 +1,6 @@
 import { THEME_ATTR, THEME_BOOT, THEME_BUTTON, THEME_SCRIPT, THEME_STYLE, swatch } from './book-scene.js';
 import { BOOK_SECTIONS, STYLE, brandMark, date, escape, retiredBy, retirementNote } from './book.js';
+import { CATEGORY_NAMES, byCategory } from './categories.js';
 
 /**
  * หน้าตาทุกหน้าของ /admin แยกจาก admin.js ที่ดูแลเส้นทางและสิทธิ์
@@ -75,6 +76,7 @@ const WHAT = {
 const NOTICES = {
   edited: ({ id, to }) => `แก้ข้อ #${id} แล้ว ฉบับใหม่คือข้อ #${to} ส่วนฉบับเดิมเก็บไว้ในประวัติ`,
   unchanged: ({ id }) => `ข้อ #${id} ไม่มีอะไรเปลี่ยน จึงไม่ได้บันทึกฉบับใหม่`,
+  moved: ({ id }) => `ย้ายข้อ #${id} ไปหมวดใหม่แล้ว ยังเป็นข้อเดิม เลขข้อไม่เปลี่ยน`,
   retired: ({ id }) => `เลิกใช้ข้อ #${id} แล้ว ถ้าเปลี่ยนใจ กู้คืนได้จากส่วนกฎที่เลิกใช้ด้านล่าง`,
   restored: ({ id }) => `กู้คืนข้อ #${id} แล้ว กลับมาใช้ตามเดิม`,
   closed: () => 'ปิดคำถามแล้ว บอทจะไม่ถามข้อนี้อีก',
@@ -199,6 +201,16 @@ export function overviewPage({ overview, timeline, query }) {
 
 // ---------- กฎ ----------
 
+/** เลือกได้แค่หมวดหลัก กฎที่ยังอยู่ชื่อบทเก่า (ยังไม่ได้ย้าย) ต้องเลือกหมวดเองก่อน ถึงจะกดบันทึกได้ */
+const categorySelect = (current) => {
+  const known = CATEGORY_NAMES.includes(current);
+  const options = CATEGORY_NAMES.map(
+    (name) => `<option${name === current ? ' selected' : ''}>${escape(name)}</option>`,
+  );
+  if (!known) options.unshift(`<option value="" selected disabled>เลือกหมวด (ตอนนี้อยู่ "${escape(current)}")</option>`);
+  return `<select name="topic" required>${options.join('')}</select>`;
+};
+
 function ruleItem(rule) {
   const base = `/admin/rules/${rule.id}`;
   return `<article class="rule" id="rule-${rule.id}"
@@ -212,12 +224,12 @@ function ruleItem(rule) {
     <details>
       <summary>แก้ไข</summary>
       <form class="stack" method="post" action="${base}/edit">
-        <label>บท <input name="topic" list="topics" value="${escape(rule.topic)}" maxlength="100" required></label>
+        <label>หมวด ${categorySelect(rule.topic)}</label>
         <label>ชื่อกฎ <input name="title" value="${escape(rule.title)}" maxlength="200" required></label>
         <label>เนื้อหา <textarea name="summary" rows="5" maxlength="4000" required>${escape(rule.summary)}</textarea></label>
         <label>แก้เพราะอะไร <input name="reason" maxlength="500" placeholder="เช่น ตัวเลขเดิมจดผิด ที่ถูกคือ 600 กิโล"></label>
-        <p class="meta">ฉบับเดิมจะเก็บไว้ในประวัติ ส่วนฉบับที่แก้จะได้เลขข้อใหม่</p>
-        <button class="btn">บันทึกฉบับใหม่</button>
+        <p class="meta">แก้ชื่อหรือเนื้อหา = ฉบับเดิมเก็บไว้ในประวัติ ฉบับที่แก้ได้เลขข้อใหม่ · เปลี่ยนแค่หมวด = ย้ายข้อเดิมไปเลย เลขข้อไม่เปลี่ยน</p>
+        <button class="btn">บันทึก</button>
       </form>
     </details>
     <details>
@@ -278,7 +290,7 @@ export function rulesPage({ rules, changes, query }) {
     if (!byTopic.has(rule.topic)) byTopic.set(rule.topic, []);
     byTopic.get(rule.topic).push(rule);
   }
-  const topics = [...byTopic.keys()].sort((a, b) => a.localeCompare(b, 'th'));
+  const topics = [...byTopic.keys()].sort(byCategory);
 
   const body = `
   <p class="meta">กฎที่ใช้อยู่ ${active.length} ข้อ · เลิกใช้แล้ว ${retired.length} ข้อ ·
@@ -304,8 +316,7 @@ export function rulesPage({ rules, changes, query }) {
           </details>
         </section>`
       : ''
-  }
-  <datalist id="topics">${topics.map((t) => `<option value="${escape(t)}">`).join('')}</datalist>`;
+  }`;
 
   return shell({ tab: '/admin/rules', title: 'กฎ', query, body, search: true });
 }
@@ -1092,11 +1103,11 @@ code { font-size: .8rem; color: var(--muted); word-break: break-all; }
 .stack .meta { margin: 0; }
 label.check { display: flex; gap: 10px; align-items: center; color: var(--ink); font-size: 1rem; }
 label.check input { width: 18px; height: 18px; accent-color: var(--accent); }
-input:not([type=checkbox]), textarea {
+input:not([type=checkbox]), textarea, select {
   width: 100%; font: inherit; color: var(--ink); background: var(--bg);
   border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px;
 }
-input:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 textarea { resize: vertical; line-height: 1.6; }
 .btn {
   justify-self: start; font: inherit; font-size: .92rem; font-weight: 600; cursor: pointer;

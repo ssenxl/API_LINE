@@ -612,7 +612,10 @@ export async function retireRule({ ruleId, reason }) {
  * ฉบับใหม่ยังนับเป็นของผู้สอนคนเดิมและอ้างคำพูดต้นฉบับชุดเดิม เพราะเนื้อหายังมาจากที่เขาสอน
  * ส่วนใครแก้อะไรเพราะอะไร ดูได้จากประวัติของกฎ
  *
- * คืน id ฉบับใหม่, id เดิมถ้าไม่มีอะไรเปลี่ยน หรือ null ถ้ากฎนั้นไม่ได้ใช้อยู่แล้ว
+ * ย้ายหมวดอย่างเดียว (ชื่อกับเนื้อหาเหมือนเดิม) ไม่นับเป็นการแก้ ย้ายที่ข้อเดิมเลย เลขข้อไม่เปลี่ยน
+ *
+ * คืน { id, kind } โดย kind คือ 'edit' (id = ฉบับใหม่), 'move' หรือ 'none' (id = ข้อเดิม)
+ * หรือ null ถ้ากฎนั้นไม่ได้ใช้อยู่แล้ว
  */
 export async function editRule({ ruleId, rule, reason }) {
   return withTransaction(async (db) => {
@@ -623,8 +626,11 @@ export async function editRule({ ruleId, rule, reason }) {
     );
     const old = rows[0];
     if (!old) return null;
-    if (old.topic === rule.topic && old.title === rule.title && old.summary === rule.summary) {
-      return ruleId;
+    if (old.title === rule.title && old.summary === rule.summary) {
+      if (old.topic === rule.topic) return { id: ruleId, kind: 'none' };
+      await db.query('UPDATE rules SET topic = $2 WHERE id = $1', [ruleId, rule.topic]);
+      await moveQuestionsWith(db, [ruleId], rule.topic);
+      return { id: ruleId, kind: 'move' };
     }
 
     await retireRules(db, [ruleId]);
@@ -641,7 +647,79 @@ export async function editRule({ ruleId, rule, reason }) {
        WHERE status = 'open' AND $1::int = ANY(rule_ids)`,
       [ruleId, created.id],
     );
-    return created.id;
+    if (old.topic !== rule.topic) await moveQuestionsWith(db, [created.id], rule.topic);
+    return { id: created.id, kind: 'edit' };
+  });
+}
+
+/**
+ * คำถามต้องอยู่บทเดียวกับกฎที่มันถามถึง ไม่งั้นจะไปโผล่ท้ายบทผิดบท และบอทจะถามซ้ำเพราะไม่เห็นว่าเคยถามแล้ว
+ * คำถามที่ถามถึงกฎหลายข้อ ยึดข้อแรกที่ยังมีอยู่
+ */
+async function moveQuestionsWith(db, ruleIds, topic) {
+  await db.query(
+    `UPDATE questions q SET topic = $2
+     WHERE q.topic <> $2
+       AND (SELECT r.id FROM unnest(q.rule_ids) WITH ORDINALITY AS u(id, n)
+            JOIN rules r ON r.id = u.id ORDER BY u.n LIMIT 1) = ANY($1::int[])`,
+    [ruleIds, topic],
+  );
+}
+
+// ---------- หมวดหลัก ----------
+
+/** กฎทุกสถานะที่ยังอยู่ในชื่อบทที่ไม่ใช่หมวดหลัก (ข้อมูลก่อนมีหมวด หรือชื่อหมวดที่เลิกใช้แล้ว) */
+export async function rulesOutsideCategories(names) {
+  const { rows } = await query(
+    `SELECT id, topic, title, summary, status FROM rules WHERE topic <> ALL($1::text[]) ORDER BY id`,
+    [names],
+  );
+  return rows;
+}
+
+/**
+ * ย้ายกฎเข้าหมวดหลัก moves = [{ id, from, to }] พร้อมย้ายคำถามตามกฎของมัน
+ * fallback = Map ชื่อบทเก่า → หมวด สำหรับคำถามที่ไม่มีกฎให้ตามไป (กฎถูกลบไปแล้ว หรือไม่ได้ผูกกฎไว้)
+ * ข้อที่ระหว่างนั้นถูกเปลี่ยนบทไปแล้วจะถูกข้าม คืนรายการที่ย้ายได้จริง
+ *
+ * เนื้อหาบทกับผังของชื่อบทเก่าลบทิ้งด้วย ไม่มีใครใช้แล้ว (ลบได้ไม่เสียหาย เปิดหนังสือครั้งหน้าจะทำของหมวดใหม่ให้เอง)
+ */
+export async function moveRulesToCategories({ moves, fallback, names, otherwise }) {
+  return withTransaction(async (db) => {
+    const moved = [];
+    for (const move of moves) {
+      const { rowCount } = await db.query('UPDATE rules SET topic = $3 WHERE id = $1 AND topic = $2', [
+        move.id,
+        move.from,
+        move.to,
+      ]);
+      if (rowCount) moved.push(move);
+    }
+
+    // คำถามไปอยู่หมวดเดียวกับกฎข้อแรกที่มันถามถึง ที่ยังมีอยู่
+    await db.query(
+      `WITH first AS (
+         SELECT DISTINCT ON (q.id) q.id, r.topic
+         FROM questions q, unnest(q.rule_ids) WITH ORDINALITY AS u(id, n)
+         JOIN rules r ON r.id = u.id
+         WHERE q.topic <> ALL($1::text[])
+         ORDER BY q.id, u.n
+       )
+       UPDATE questions q SET topic = first.topic FROM first
+       WHERE q.id = first.id AND first.topic = ANY($1::text[])`,
+      [names],
+    );
+    const { rows } = await db.query('SELECT DISTINCT topic FROM questions WHERE topic <> ALL($1::text[])', [names]);
+    for (const { topic } of rows) {
+      await db.query('UPDATE questions SET topic = $2 WHERE topic = $1', [topic, fallback.get(topic) ?? otherwise]);
+    }
+
+    await db.query('DELETE FROM chapters WHERE topic <> ALL($1::text[])', [names]);
+    await db.query(
+      `DELETE FROM diagrams WHERE key LIKE 'flow:%' AND substr(key, 6) <> ALL($1::text[])`,
+      [names],
+    );
+    return moved;
   });
 }
 

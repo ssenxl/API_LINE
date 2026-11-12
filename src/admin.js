@@ -14,6 +14,7 @@ import {
 } from './admin-views.js';
 import { sendAudio } from './audio.js';
 import { BOOK_SECTIONS, bookSettings, warmBook } from './book.js';
+import { byCategory, toCategory } from './categories.js';
 import { config } from './config.js';
 import * as kb from './knowledge.js';
 
@@ -241,7 +242,7 @@ adminRouter.get(
     }
     const topics = [...counts]
       .map(([topic, count]) => ({ topic, count }))
-      .sort((a, b) => a.topic.localeCompare(b.topic, 'th'));
+      .sort((a, b) => byCategory(a.topic, b.topic));
     return bookPage({
       settings: bookSettings(saved),
       topics,
@@ -270,18 +271,22 @@ adminRouter.post(
   '/rules/:id/edit',
   action('แก้กฎ', '/admin/rules', async (id, body) => {
     const rule = {
-      topic: field(body, 'topic', 100) || 'เรื่องทั่วไป',
+      topic: toCategory(field(body, 'topic', 100)),
       title: field(body, 'title', 200),
       summary: field(body, 'summary', 4000),
     };
     if (!rule.title || !rule.summary) return { done: 'invalid', id, anchor: `rule-${id}` };
 
     const reason = reasonOf(body);
-    const newId = await kb.editRule({ ruleId: id, rule, reason });
-    if (newId === null) return { done: 'missing', id };
-    if (newId === id) return { done: 'unchanged', id, anchor: `rule-${id}` };
-    await kb.logAdmin('แก้กฎ', `#${id} → #${newId}: ${reason}`);
-    return { done: 'edited', id, to: newId, anchor: `rule-${newId}` };
+    const result = await kb.editRule({ ruleId: id, rule, reason });
+    if (result === null) return { done: 'missing', id };
+    if (result.kind === 'none') return { done: 'unchanged', id, anchor: `rule-${id}` };
+    if (result.kind === 'move') {
+      await kb.logAdmin('ย้ายหมวดกฎ', `#${id} → ${rule.topic}: ${reason}`);
+      return { done: 'moved', id, anchor: `rule-${id}` };
+    }
+    await kb.logAdmin('แก้กฎ', `#${id} → #${result.id}: ${reason}`);
+    return { done: 'edited', id, to: result.id, anchor: `rule-${result.id}` };
   }),
 );
 

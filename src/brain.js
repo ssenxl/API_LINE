@@ -1,4 +1,5 @@
 import { askJSON } from './ai.js';
+import { CATEGORY_GUIDE, categoryScope, matchCategory, toCategory } from './categories.js';
 import { config } from './config.js';
 
 /**
@@ -13,7 +14,8 @@ const WRITING_RULES = `## วิธีเขียนกฎ
 - summary ต้องเป็นภาษาคนธรรมดา อ่านเข้าใจได้เองโดยไม่ต้องเห็นแชท บอกให้ครบว่ากรณีไหน ต้องทำอะไร และเพราะอะไร (ถ้าผู้ใช้บอกเหตุผลมา)
 - ตัวเลข หน่วย ชื่อเฉพาะ เงื่อนไข และข้อยกเว้น ต้องตรงตามที่ผู้ใช้บอก ห้ามเดาหรือเติมเอง
 - title คือชื่อกฎสั้น ๆ ไม่เกินหนึ่งบรรทัด
-- topic คือชื่อบทในหนังสือ ใช้ชื่อบทที่มีอยู่แล้วถ้าเข้ากันได้ ตั้งใหม่เฉพาะเมื่อไม่เข้ากับบทไหนเลย ชื่อบทควรสั้นและกว้างพอให้รวมหลายกฎได้`;
+- topic คือหมวดของกฎ (หนึ่งหมวดคือหนึ่งบทในหนังสือ) ต้องเป็นหนึ่งในชื่อต่อไปนี้เท่านั้น สะกดให้ตรงตัว ห้ามตั้งชื่อใหม่
+${CATEGORY_GUIDE}`;
 
 /**
  * ใส่ค่าลงช่อง {ชื่อ} ใน prompt รอบเดียว
@@ -32,11 +34,6 @@ function formatRules(rules) {
       return `#${r.id} [${r.topic}] ${r.title} — ${r.summary}${by}`;
     })
     .join('\n');
-}
-
-function listTopics(rules) {
-  const topics = [...new Set(rules.map((r) => r.topic))];
-  return topics.length ? topics.join(', ') : '(ยังไม่มีบทไหน)';
 }
 
 /** คำถามที่ค้างอยู่ ใส่เลข Q ไว้ให้ AI อ้างกลับมาได้ว่าผู้ใช้ตอบข้อไหน */
@@ -84,7 +81,7 @@ export const dropRuleRefs = (value) =>
 
 function cleanRule(raw) {
   const rule = {
-    topic: text(raw?.topic, 100) || 'เรื่องทั่วไป',
+    topic: toCategory(raw?.topic),
     title: text(raw?.title, 200),
     summary: text(raw?.summary),
   };
@@ -103,9 +100,6 @@ const ANALYZE_PROMPT = `คุณคือ "บรรณารักษ์คว
 
 ## กฎที่จดไว้แล้วตอนนี้
 {RULES}
-
-## ชื่อบทที่มีอยู่แล้ว
-{TOPICS}
 
 ## คำถามที่ผมถามค้างไว้ ยังไม่ได้คำตอบ
 {PENDING}
@@ -141,7 +135,6 @@ ${WRITING_RULES}
 export async function analyzeMessage({ text: message, history, rules, pending = [] }) {
   const system = fill(ANALYZE_PROMPT, {
     RULES: formatRules(rules),
-    TOPICS: listTopics(rules),
     PENDING: formatQuestions(pending),
   });
   const raw = await askJSON(system, [...history, { role: 'user', content: message }]);
@@ -287,11 +280,12 @@ export async function findGaps({ topic, rules, newRules, asked }) {
 // ---------- 4. เรียบเรียงบทในหนังสือ ----------
 
 // เปลี่ยนเลขนี้เมื่อแก้ CHAPTER_PROMPT เพื่อให้ทุกบทถูกเขียนใหม่ด้วยคำสั่งใหม่
-export const CHAPTER_PROMPT_VERSION = 5;
+export const CHAPTER_PROMPT_VERSION = 6;
 
 const CHAPTER_PROMPT = `คุณกำลังเขียนบทหนึ่งในหนังสือความรู้ของทีม ให้คนที่เพิ่งเข้ามาใหม่อ่านแล้วเข้าใจและทำงานต่อได้ทันที
 
 ชื่อบท: {TOPIC}
+บทนี้เป็นหมวดที่รวบรวมเรื่อง: {SCOPE}
 
 ## กฎทั้งหมดในบทนี้
 {RULES}
@@ -299,7 +293,7 @@ const CHAPTER_PROMPT = `คุณกำลังเขียนบทหนึ�
 เขียนเป็นภาษาไทยที่อ่านง่าย เหมือนรุ่นพี่อธิบายให้รุ่นน้องฟัง
 - ความยาวต้องพอดีกับเนื้อหา กฎข้อเดียวเขียนสั้น ๆ ก็พอ ห้ามพูดเรื่องเดิมซ้ำหลายรอบ ห้ามทำหัวข้อ "สรุป" ที่ทวนสิ่งที่เพิ่งพูดไป
 - overview: บทนี้เกี่ยวกับอะไร ใช้ตอนไหน 1-3 ประโยค
-- sections: เรียงตามลำดับที่คนทำงานจะเจอจริง รวมเรื่องที่เกี่ยวกันไว้ด้วยกัน ถ้ามีกฎน้อย ใช้ section เดียวก็ได้
+- sections: เรียงตามลำดับที่คนทำงานจะเจอจริง รวมเรื่องที่เกี่ยวกันไว้ด้วยกัน บทหนึ่งรวมได้หลายเรื่องย่อย ให้แยกหนึ่ง section ต่อหนึ่งเรื่องย่อย ถ้ามีกฎน้อย ใช้ section เดียวก็ได้
   - ถ้ามีผังขั้นตอนด้านบน ให้เล่าไล่ตามขั้นในผังจากขั้นแรกไปขั้นสุดท้าย ห้ามสลับลำดับ คนอ่านจะได้อ่านไปพร้อมกับดูผัง
     จุดที่ต้องเลือกให้เล่าทั้งสองทางตรงขั้นนั้นเลย กฎที่ไม่อยู่ในผังให้เล่าตรงขั้นที่เกี่ยวข้อง หรือต่อท้ายถ้าไม่เกี่ยวกับขั้นไหน
   - heading เป็นชื่อหัวข้อสั้น ๆ ห้ามใส่เลขข้อ
@@ -337,7 +331,12 @@ function formatFlow(flow) {
 
 /** flow คือผลจาก drawFlow() ของบทเดียวกัน (หรือ null) ถ้ามี เนื้อหาบทจะเล่าตามลำดับในผัง */
 export async function writeChapter(topic, rules, flow = null) {
-  const system = fill(CHAPTER_PROMPT, { TOPIC: topic, RULES: formatRules(rules), FLOW: formatFlow(flow) });
+  const system = fill(CHAPTER_PROMPT, {
+    TOPIC: topic,
+    SCOPE: categoryScope(topic) || topic,
+    RULES: formatRules(rules),
+    FLOW: formatFlow(flow),
+  });
   const raw = await askJSON(system, [{ role: 'user', content: `เขียนบท "${topic}"` }]);
 
   return {
@@ -482,4 +481,37 @@ export async function mapBook(rules) {
     links.push({ a, b, why: text(item?.why, 120) });
   }
   return { labels, links };
+}
+
+// ---------- 7. ย้ายกฎเก่าเข้าหมวดหลัก ----------
+
+const CLASSIFY_PROMPT = `หนังสือความรู้ของทีมเปลี่ยนมาแบ่งบทเป็นหมวดหลักชุดเดียว กฎด้านล่างยังอยู่ในชื่อบทแบบเก่า (ในวงเล็บเหลี่ยม)
+ให้จัดกฎทุกข้อเข้าหมวดที่เหมาะที่สุดเพียงหมวดเดียว
+
+## หมวดที่มี (สะกดให้ตรงตัว ห้ามตั้งชื่อใหม่)
+${CATEGORY_GUIDE}
+ดูจากเนื้อหาของกฎเป็นหลัก ชื่อบทเก่าเป็นแค่ตัวช่วย
+
+## กฎที่ต้องจัด
+{RULES}
+
+ตอบเป็น JSON เท่านั้น ในรูปแบบนี้ ต้องมีครบทุกข้อ
+{"rules":[{"id":1,"category":""}]}`;
+
+/** คืน Map ของ id กฎ → ชื่อหมวด เฉพาะข้อที่ AI จัดมาให้ได้ ข้อที่ตกหล่นไม่อยู่ใน Map */
+export async function classifyRules(rules) {
+  const system = fill(CLASSIFY_PROMPT, { RULES: formatRules(rules) });
+  const raw = await askJSON(system, [{ role: 'user', content: 'จัดกฎเข้าหมวด' }], {
+    maxOutputTokens: Math.max(config.ai.maxOutputTokens, 4000 + rules.length * 30),
+  });
+
+  const known = new Set(rules.map((r) => r.id));
+  const result = new Map();
+  for (const item of list(raw.rules)) {
+    const id = posInt(item?.id);
+    // AI ตอบชื่อที่ไม่ใช่หมวด ไม่นับว่าจัดให้แล้ว ให้ไปใช้ทางสำรองแทนการโยนเข้า "อื่นๆ" ทันที
+    const name = matchCategory(item?.category);
+    if (id && known.has(id) && name) result.set(id, name);
+  }
+  return result;
 }

@@ -24,6 +24,7 @@ import {
   mapBook,
   writeChapter,
 } from './brain.js';
+import { byCategory } from './categories.js';
 import { config } from './config.js';
 import * as kb from './knowledge.js';
 
@@ -116,7 +117,7 @@ async function buildChapters(data) {
     if (!byTopic.has(rule.topic)) byTopic.set(rule.topic, []);
     byTopic.get(rule.topic).push(rule);
   }
-  const topics = [...byTopic.keys()].sort((a, b) => a.localeCompare(b, 'th'));
+  const topics = [...byTopic.keys()].sort(byCategory);
 
   // แผนผังทั้งเล่มที่ผู้ดูแลปิดไว้ไม่ต้องเสียค่า AI เตรียม ป้ายเกี่ยวข้องกับบทอื่นในผังขั้นตอนก็ใช้แผนผังนี้ด้วย
   const [chapters, map] = await Promise.all([

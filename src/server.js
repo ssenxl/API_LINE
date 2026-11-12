@@ -10,6 +10,7 @@ import { handleEvent } from './handler.js';
 import { getSetting } from './knowledge.js';
 import { startKeepAlive } from './keepalive.js';
 import { verifySignature } from './line.js';
+import { recategorize } from './recategorize.js';
 
 const app = express();
 
@@ -111,6 +112,15 @@ try {
 } catch (err) {
   console.error('[server] เชื่อมฐานข้อมูลไม่ได้ ตรวจค่า DATABASE_URL:', err.message);
   process.exit(1);
+}
+
+// ทำก่อนเปิดรับ request หนังสือกับบอทจะได้เห็นแต่หมวดหลัก และไม่เสียค่า AI เขียนบทชื่อเก่าที่กำลังจะหายไป
+// ปกติเสร็จในเสี้ยววินาที เรียก AI เฉพาะตอนที่มีกฎค้างอยู่นอกหมวด (ครั้งแรกหลังอัปเดต หรือหลังเปลี่ยนชื่อหมวด)
+try {
+  const moved = await recategorize();
+  if (moved) console.log(`[server] ย้ายกฎ ${moved} ข้อเข้าหมวดหลักแล้ว`);
+} catch (err) {
+  console.error('[server] ย้ายกฎเข้าหมวดหลักไม่สำเร็จ จะลองใหม่ตอนเปิดเครื่องครั้งหน้า:', err.message);
 }
 
 app.listen(config.port, () => {
