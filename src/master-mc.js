@@ -31,7 +31,7 @@ export function masterMcSection(master, { escape, date }) {
     [count(total), 'เครื่อง'],
     ...[...perFactory].filter(([, n]) => n > 0).sort((a, b) => b[1] - a[1]).map(([factory, n]) => [count(n), factory]),
     [names, 'ชื่อเครื่อง (MC)'],
-    gauges.length && [`${gauges[0]}–${gauges.at(-1)}`, 'เกจ'],
+    gauges.length && [`${gauges[0]}–${gauges.at(-1)}`, 'Guage'],
   ]
     .filter(Boolean)
     .map(([value, label]) => `<span><b>${escape(value)}</b> ${escape(label)}</span>`)
@@ -88,7 +88,7 @@ export function masterMcSection(master, { escape, date }) {
     <div class="mm-scroll" tabindex="0" role="region" aria-label="ตาราง Master MC เลื่อนดูได้">
       <table class="mm-table">
         <thead><tr>
-          <th>MC</th><th class="n">เกจ</th><th class="n">จำนวนเครื่อง</th><th>โรงงาน</th><th>ประเภท</th>
+          <th>MC</th><th class="n">Guage</th><th class="n">จำนวนเครื่อง</th><th>โรงงาน</th><th>ประเภท</th>
           <th>MC_CAT</th><th class="n">ชม./วัน</th>${daysColumn ? '<th class="n">วัน/สัปดาห์</th>' : ''}<th>Group</th>
         </tr></thead>
         <tbody>${body}</tbody>
@@ -112,7 +112,7 @@ export const MASTER_MC_STYLE = `
 .mm-table { width: 100%; border-collapse: collapse; font-size: .9rem; line-height: 1.45; font-variant-numeric: tabular-nums; }
 .mm-table th, .mm-table td { padding: 7px 9px; text-align: left; vertical-align: top; white-space: nowrap; }
 .mm-table td { border-top: 1px solid transparent; }
-/* เส้นคั่นเฉพาะตอนขึ้นชื่อเครื่องใหม่ เกจของเครื่องเดียวกันจะได้เกาะกันเป็นกลุ่ม */
+/* เส้นคั่นเฉพาะตอนขึ้นชื่อเครื่องใหม่ Guage ของเครื่องเดียวกันจะได้เกาะกันเป็นกลุ่ม */
 .mm-table tr.first td { border-top-color: var(--line); }
 .mm-table thead th {
   position: sticky; top: 0; z-index: 1; background: var(--paper); color: var(--muted);

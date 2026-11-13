@@ -62,7 +62,7 @@ console.log(`[sync:mc] บันทึกแล้ว: ${summary}`);
 console.log(changes.length ? `[sync:mc] เปลี่ยน ${changes.length} จุด:\n  ${changes.join('\n  ')}` : '[sync:mc] ข้อมูลเหมือนครั้งก่อน');
 process.exit(0);
 
-/** เทียบข้อมูลสองชุดทีละแถว (ชื่อเครื่อง + เกจ) คืนรายการสิ่งที่เปลี่ยนเป็นข้อความ */
+/** เทียบข้อมูลสองชุดทีละแถว (ชื่อเครื่อง + Guage) คืนรายการสิ่งที่เปลี่ยนเป็นข้อความ */
 function diff(oldRows, newRows) {
   const LABELS = { total: 'จำนวนเครื่อง', hours: 'ชม./วัน', days: 'วัน/สัปดาห์', factory: 'โรงงาน', type: 'ประเภท', cat: 'MC_CAT', group: 'Group', subgroup: 'SUBGroup' };
   const name = (row) => `${row.mc} ${row.gauge}`;

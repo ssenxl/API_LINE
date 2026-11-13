@@ -1719,7 +1719,7 @@ function sceneClient() {
         add(quote, 'คำพูดต้นฉบับ', name, said, 1);
       }
     }
-    // แถวของตาราง Master MC ในบท Machine ค้นด้วยชื่อเครื่อง เกจ โรงงาน หรือชื่อกลุ่มได้
+    // แถวของตาราง Master MC ในบท Machine ค้นด้วยชื่อเครื่อง Guage โรงงาน หรือชื่อกลุ่มได้
     for (const row of reader.querySelectorAll('.mm-table tbody tr')) {
       add(row, 'Master MC', row.dataset.name, row.dataset.text, 2);
     }
