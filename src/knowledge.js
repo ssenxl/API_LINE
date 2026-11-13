@@ -1,5 +1,6 @@
 import { query, withTransaction } from './db.js';
 import { config } from './config.js';
+import { MASTER_MC_KEY } from './master-mc.js';
 
 /**
  * ทุกอย่างที่อ่าน/เขียนคลังความรู้อยู่ในไฟล์นี้
@@ -1023,7 +1024,7 @@ export async function purgeTrash(ids) {
 
 /** ดึงทุกอย่างที่หนังสือต้องใช้ในครั้งเดียว */
 export async function loadBook() {
-  const [rules, sources, changes, conflicts, questions, chapters, diagrams, settings] = await Promise.all([
+  const [rules, sources, changes, conflicts, questions, chapters, diagrams, settings, masterMc] = await Promise.all([
     query(
       `SELECT r.*, COALESCE(u.display_name, '${UNKNOWN_NAME}') AS author
        FROM rules r LEFT JOIN users u ON u.user_id = r.created_by
@@ -1062,6 +1063,7 @@ export async function loadBook() {
     query('SELECT topic, source_hash, content FROM chapters'),
     query('SELECT key, source_hash, content FROM diagrams'),
     getSetting('book'),
+    getSetting(MASTER_MC_KEY),
   ]);
 
   return {
@@ -1073,6 +1075,7 @@ export async function loadBook() {
     chapters: new Map(chapters.rows.map((c) => [c.topic, c])),
     diagrams: new Map(diagrams.rows.map((d) => [d.key, d])),
     settings,
+    masterMc,
   };
 }
 

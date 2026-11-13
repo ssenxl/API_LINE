@@ -6,7 +6,8 @@
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
-    "dev": "node --watch --env-file=.env src/server.js"
+    "dev": "node --watch --env-file=.env src/server.js",
+    "sync:mc": "node --env-file=.env scripts/sync-master-mc.js"
   },
   "engines": {
     "node": ">=20"

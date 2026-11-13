@@ -1719,6 +1719,10 @@ function sceneClient() {
         add(quote, 'คำพูดต้นฉบับ', name, said, 1);
       }
     }
+    // แถวของตาราง Master MC ในบท Machine ค้นด้วยชื่อเครื่อง เกจ โรงงาน หรือชื่อกลุ่มได้
+    for (const row of reader.querySelectorAll('.mm-table tbody tr')) {
+      add(row, 'Master MC', row.dataset.name, row.dataset.text, 2);
+    }
     for (const el of reader.querySelectorAll('article.conflict')) add(el, 'ข้อขัดแย้ง', place(el), el.textContent, 1);
     const prose =
       '.overview p, .overview li, section.chapter > p:not(.eyebrow):not(.meta), section.chapter > ul > li, ' +

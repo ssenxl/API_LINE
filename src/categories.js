@@ -30,6 +30,8 @@ export const CATEGORIES = [
 ];
 
 export const CATEGORY_NAMES = CATEGORIES.map((c) => c.name);
+/** หมวดเครื่องจักร บทนี้ในหนังสือมีตาราง Master MC ต่อท้ายคำอธิบาย (ดู master-mc.js) */
+export const MACHINE_CATEGORY = 'Machine';
 export const FALLBACK_CATEGORY = 'อื่นๆ';
 
 const squash = (value) => String(value ?? '').toLowerCase().replace(/\s+/g, '');

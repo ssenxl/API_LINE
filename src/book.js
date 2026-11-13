@@ -24,8 +24,9 @@ import {
   mapBook,
   writeChapter,
 } from './brain.js';
-import { byCategory } from './categories.js';
+import { MACHINE_CATEGORY, byCategory } from './categories.js';
 import { config } from './config.js';
+import { MASTER_MC_STYLE, masterMcSection } from './master-mc.js';
 import * as kb from './knowledge.js';
 
 /**
@@ -42,6 +43,7 @@ export const BOOK_SECTIONS = [
   { key: 'howto', label: 'กล่อง "วิธีอ่านเล่มนี้"' },
   { key: 'map', label: 'หน้า "ภาพรวมทั้งเล่ม" (Mind Map และวงโคจร)' },
   { key: 'flow', label: 'ผังขั้นตอนในแต่ละบท (ทีละขั้น และแยกตามฝ่าย)' },
+  { key: 'mastermc', label: 'ตาราง Master MC ในบท Machine (ดึงจากไฟล์ของ Knit Plan)' },
   { key: 'gaps', label: 'กล่อง "สิ่งที่ยังไม่ชัด" ท้ายบท (คำถามค้าง)' },
   { key: 'sources', label: 'คำพูดต้นฉบับของผู้สอนใต้กฎแต่ละข้อ' },
   { key: 'audio', label: 'ปุ่มฟังเสียงต้นฉบับ' },
@@ -480,6 +482,7 @@ function chapterSection(chapter, index, data) {
     <p class="eyebrow">บทที่ ${index + 1}</p>
     <h2>${escape(chapter.topic)}</h2>
     ${body}
+    ${data.show.mastermc && chapter.topic === MACHINE_CATEGORY ? masterMcSection(data.masterMc, { escape, date }) : ''}
     ${gapsAside(data.questions.filter((q) => q.topic === chapter.topic), data)}
     <h3 class="rules-heading">กฎในบทนี้ (${chapter.rules.length} ข้อ)</h3>
     ${chapter.rules.map((r) => ruleCard(r, data)).join('')}
@@ -735,7 +738,7 @@ ${THEME_BOOT}
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&family=Trirong:wght@500;600;700&display=swap" rel="stylesheet">
-<style>${STYLE}${THEME_STYLE}${SCENE_STYLE}${DIAGRAM_STYLE}</style>
+<style>${STYLE}${THEME_STYLE}${SCENE_STYLE}${DIAGRAM_STYLE}${MASTER_MC_STYLE}</style>
 </head>
 <body>
 ${DIAGRAM_DEFS}
